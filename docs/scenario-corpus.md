@@ -270,12 +270,22 @@ rollout.
 
 **Violated invariant.** RP-DB-001.
 
-**Why.** The `{api:v1, api:v2}` coexistence state, evaluated against the
-post-migration schema (migration phase `PhaseDuringRollout`), has
-`api:v1` live with a declared read of the dropped column.
+**Why.** `api:v1` reading the dropped column is unsafe in *every*
+reachable state where it is still live and the migration has committed —
+including, but not limited to, the `{api:v1, api:v2}` coexistence state.
+`PhaseDuringRollout`'s declared timing ambiguity (architecture.md §3.3,
+assumption A2) makes the migration's commit point reachable at any point
+in the plan, so the engine's selected shortest counterexample is
+typically the simpler one-event path (migration commits while `api:v1` is
+still the *only* live version), not the two-event coexistence path — see
+`invariants.md` RP-DB-001's note on this. Both are real, reachable unsafe
+states; the implementation reports the shortest.
 
-**Expected diagnostic.** As shown verbatim in `invariants.md` RP-DB-001's
-Diagnostic structure section (this scenario *is* that example).
+**Expected diagnostic.** The rendered shape is as shown illustratively in
+`invariants.md` RP-DB-001's Diagnostic structure section; the exact
+`path` line reflects whichever reachable violation is shortest (see
+`invariants.md`'s note above the illustration), not necessarily the
+coexistence-specific wording shown there.
 
 **Expected rollback classification.** Irreversible (data loss); a
 rollback plan to `api:v1` after this migration is independently UNSAFE

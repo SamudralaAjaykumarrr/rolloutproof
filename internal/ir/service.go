@@ -78,6 +78,12 @@ type Service struct {
 	Name    string
 	Version string
 
+	// SourceFile is the contract metadata file this Service was parsed
+	// from, if any (empty when constructed directly, e.g. in tests). It
+	// exists purely for Evidence citation (docs/architecture.md §11) —
+	// no invariant may branch on its value.
+	SourceFile string
+
 	schemaReads  []ColumnRef
 	schemaWrites []ColumnRef
 	dependsOn    []ServiceDependency

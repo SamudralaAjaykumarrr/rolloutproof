@@ -75,8 +75,20 @@ post-migration schema (architecture.md §3.2 step 3), has `api:v1` live with
 - `Evidence`: the `OpDropColumn` (file + statement locator), the
   `api:v1.SchemaReads` entry citing the contract-metadata file that
   declared it.
-- `Path`: `[MigrationCommitted, NewPodReady]` — the shortest sequence from
-  rollout start to the violating coexistence state (architecture.md §4.4).
+- `Path`: the shortest sequence from rollout start to a violating state
+  (architecture.md §4.4). For `PhaseDuringRollout`, implementation
+  (`internal/graph`) shows this is **not necessarily**
+  `[MigrationCommitted, NewPodReady]` (the coexistence path) — assumption
+  A2 (architecture.md §3.3) makes the migration's commit point reachable
+  at *any* point in the plan's timeline, including before any pod
+  transition at all, so `[MigrationCommitted]` alone (one event, `api:v1`
+  still the only live version) is frequently the shorter, and therefore
+  selected, counterexample. This is a stronger finding, not a weaker one:
+  it shows the hazard does not require coexistence to exist — coexistence
+  is one way to reach an unsafe state in this scenario, not the only or
+  shortest one. A report should not assume the rendered path always
+  demonstrates coexistence specifically; it demonstrates whichever
+  reachable violation is truly minimal.
 - `RecommendedSequence`: derived generically (not hard-coded per scenario)
   by finding the smallest edit to the plan that removes the violating edge:
   here, "ship a version of `api` whose `SchemaReads` excludes the column,

@@ -150,6 +150,7 @@ func Parse(filename string, src []byte) (ir.Service, error) {
 	if err != nil {
 		return ir.Service{}, &ParseError{File: filename, Message: err.Error()}
 	}
+	svc.SourceFile = filename
 	return svc, nil
 }
 
@@ -191,6 +192,18 @@ func (r *Registry) Lookup(name, version string) (ir.Service, bool) {
 	}
 	s, ok := r.services[ir.ServiceKey{Name: name, Version: version}]
 	return s, ok
+}
+
+// Services returns a defensive copy of every parsed contract, keyed by
+// (service, version). internal/invariant depends only on this plain map
+// type, not on this package, keeping the parser/invariant dependency
+// direction in docs/architecture.md §10 intact.
+func (r *Registry) Services() map[ir.ServiceKey]ir.Service {
+	out := make(map[ir.ServiceKey]ir.Service, len(r.services))
+	for k, v := range r.services {
+		out[k] = v
+	}
+	return out
 }
 
 // LoadDir parses every *.yaml/*.yml file directly inside dir (no

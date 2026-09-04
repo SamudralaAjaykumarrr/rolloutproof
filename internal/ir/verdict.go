@@ -75,6 +75,31 @@ func (r RollbackVerdict) String() string {
 	}
 }
 
+func (r RollbackVerdict) dominance() int {
+	switch r {
+	case RollbackUnsafe:
+		return 3
+	case RollbackUnknown:
+		return 2
+	case RollbackConditionallySafe:
+		return 1
+	default:
+		return 0
+	}
+}
+
+// CombineRollback folds two RollbackVerdicts under the dominance order
+// Unsafe > Unknown > ConditionallySafe > Safe. Unknown outranks
+// ConditionallySafe deliberately: "we don't know" must never be
+// collapsed into a specific, milder classification just because another
+// fact was more encouraging (docs/vision.md §10).
+func CombineRollback(a, b RollbackVerdict) RollbackVerdict {
+	if a.dominance() >= b.dominance() {
+		return a
+	}
+	return b
+}
+
 // EvidenceGap names one specific piece of evidence that was missing when
 // an invariant tried to reach a verdict. Always populated when a
 // Diagnostic's Verdict is VerdictUnknown (docs/architecture.md §6) — an
