@@ -13,3 +13,5 @@ supersedes the old one, so the historical record of *why* stays intact.
 | [0004](0004-explicit-dependency-metadata-over-source-analysis.md) | Explicit dependency metadata over source-code analysis | Accepted |
 | [0005](0005-tristate-verdict-over-boolean.md) | Tri-state SAFE/UNSAFE/UNKNOWN verdict over boolean safe/unsafe | Accepted |
 | [0006](0006-structured-evidence-over-hardcoded-diagnostics.md) | Structured evidence/counterexample model over hard-coded diagnostics | Accepted |
+| [0007](0007-v1-contract-metadata-format.md) | V1 service/schema contract metadata format | Accepted |
+| [0008](0008-zero-value-safety-for-verdict-enums.md) | Zero-value safety for verdict and classification enums | Accepted |
