@@ -6,10 +6,20 @@ individually valid, but whether the **transition** between the current and
 target state is safe, including every mixed-version and partially-applied
 intermediate state a real rollout passes through.
 
-**Status: architecture foundation.** No verification engine exists yet.
-This repository currently contains the design documents that define what
-RolloutProof will do and how, ahead of implementation. See
-[`docs/vision.md`](docs/vision.md) for the honest scope and non-goals.
+**Status: V1, partial invariant catalog.** The full pipeline — Kubernetes
+Deployment + PostgreSQL migration + service contract metadata parsers,
+the normalized IR, the reachable-state transition graph, invariant
+evaluation, structured counterexamples, rollback classification,
+deterministic text reporting, and the `rolloutproof verify` CLI — is
+implemented and exercised end to end against real fixtures in
+[`examples/`](examples/) (`internal/verify`'s and `cmd/rolloutproof`'s
+tests run the real parsers and the real graph, not hand-built IR values).
+Of the invariant catalog in [`docs/invariants.md`](docs/invariants.md),
+RP-DB-001, -002, -004, and -005 are implemented; RP-DB-003/006/007,
+RP-K8S-*, RP-API-*, RP-ORDER-*, and RP-ROLLBACK-* as a first-class
+evaluation of a plan's `RollbackTarget` remain documented but not yet
+built. See [`docs/vision.md`](docs/vision.md) for the honest scope and
+non-goals.
 
 ## The core idea
 
