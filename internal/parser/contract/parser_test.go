@@ -26,7 +26,7 @@ dependencies:
 `
 
 func TestParse_Valid(t *testing.T) {
-	svc, err := Parse("api-v1.yaml", []byte(validDoc))
+	svc, _, err := Parse("api-v1.yaml", []byte(validDoc))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -64,7 +64,7 @@ kind: ServiceContract
 service: api
 version: v1
 `
-	svc, err := Parse("api-v1.yaml", []byte(doc))
+	svc, _, err := Parse("api-v1.yaml", []byte(doc))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -75,12 +75,12 @@ version: v1
 
 func TestParse_RejectsWrongAPIVersion(t *testing.T) {
 	doc := `
-apiVersion: rolloutproof.dev/v1beta1
+apiVersion: rolloutproof.dev/v2
 kind: ServiceContract
 service: api
 version: v1
 `
-	_, err := Parse("bad.yaml", []byte(doc))
+	_, _, err := Parse("bad.yaml", []byte(doc))
 	if err == nil {
 		t.Fatalf("expected error for unsupported apiVersion")
 	}
@@ -93,7 +93,7 @@ kind: APIContract
 service: api
 version: v1
 `
-	_, err := Parse("bad.yaml", []byte(doc))
+	_, _, err := Parse("bad.yaml", []byte(doc))
 	if err == nil {
 		t.Fatalf("expected error for unsupported kind")
 	}
@@ -105,7 +105,7 @@ apiVersion: rolloutproof.dev/v1alpha1
 kind: ServiceContract
 version: v1
 `
-	_, err := Parse("bad.yaml", []byte(doc))
+	_, _, err := Parse("bad.yaml", []byte(doc))
 	if err == nil {
 		t.Fatalf("expected error for missing service")
 	}
@@ -117,7 +117,7 @@ apiVersion: rolloutproof.dev/v1alpha1
 kind: ServiceContract
 service: api
 `
-	_, err := Parse("bad.yaml", []byte(doc))
+	_, _, err := Parse("bad.yaml", []byte(doc))
 	if err == nil {
 		t.Fatalf("expected error for missing version")
 	}
@@ -133,7 +133,7 @@ shema:
   reads:
     - users.email
 `
-	_, err := Parse("typo.yaml", []byte(doc))
+	_, _, err := Parse("typo.yaml", []byte(doc))
 	if err == nil {
 		t.Fatalf("expected error for unknown top-level field 'shema'")
 	}
@@ -151,7 +151,7 @@ schema:
   reeds:
     - users.name
 `
-	_, err := Parse("typo.yaml", []byte(doc))
+	_, _, err := Parse("typo.yaml", []byte(doc))
 	if err == nil {
 		t.Fatalf("expected error for unknown nested field 'reeds'")
 	}
@@ -167,7 +167,7 @@ dependencies:
   - service: payments
     minCompatVersion: v3
 `
-	_, err := Parse("typo.yaml", []byte(doc))
+	_, _, err := Parse("typo.yaml", []byte(doc))
 	if err == nil {
 		t.Fatalf("expected error for unknown dependency field 'minCompatVersion'")
 	}
@@ -177,7 +177,7 @@ func TestParse_RejectsMalformedColumnReference(t *testing.T) {
 	cases := []string{"usersemail", "users.email.extra", "."}
 	for _, c := range cases {
 		doc := "apiVersion: rolloutproof.dev/v1alpha1\nkind: ServiceContract\nservice: api\nversion: v1\nschema:\n  reads:\n    - " + c + "\n"
-		if _, err := Parse("bad.yaml", []byte(doc)); err == nil {
+		if _, _, err := Parse("bad.yaml", []byte(doc)); err == nil {
 			t.Errorf("expected error for malformed column reference %q", c)
 		}
 	}
@@ -194,7 +194,7 @@ schema:
     - users.email
     - users.email
 `
-	svc, err := Parse("dup.yaml", []byte(doc))
+	svc, _, err := Parse("dup.yaml", []byte(doc))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -212,14 +212,14 @@ version: v1
 dependencies:
   - minCompatibleVersion: v3
 `
-	_, err := Parse("bad.yaml", []byte(doc))
+	_, _, err := Parse("bad.yaml", []byte(doc))
 	if err == nil {
 		t.Fatalf("expected error for a dependency mapping missing 'service'")
 	}
 }
 
 func TestParse_MalformedYAML(t *testing.T) {
-	_, err := Parse("bad.yaml", []byte("not: valid: yaml: [["))
+	_, _, err := Parse("bad.yaml", []byte("not: valid: yaml: [["))
 	if err == nil {
 		t.Fatalf("expected error for malformed YAML")
 	}
@@ -318,6 +318,129 @@ dependencies:
 	}
 	if len(svc.DependsOn()) != 1 || svc.DependsOn()[0].ServiceName != "nonexistent-service" {
 		t.Fatalf("unexpected dependencies: %+v", svc.DependsOn())
+	}
+}
+
+func TestParse_APIBlockRequiresBetaVersion(t *testing.T) {
+	doc := `
+apiVersion: rolloutproof.dev/v1alpha1
+kind: ServiceContract
+service: orders
+version: v2
+api:
+  provides:
+    - contract: orders-api
+`
+	_, _, err := Parse("bad.yaml", []byte(doc))
+	if err == nil {
+		t.Fatalf("expected an error for an api block under v1alpha1")
+	}
+}
+
+func TestParse_ProvidesAndConsumes(t *testing.T) {
+	doc := `
+apiVersion: rolloutproof.dev/v1beta1
+kind: ServiceContract
+service: orders
+version: v2
+api:
+  provides:
+    - contract: orders-api
+      endpoints:
+        - operation: "GET /orders/:id"
+          request:
+            fields:
+              - name: id
+                required: true
+          response:
+            fields:
+              - name: id
+                required: true
+              - name: total_amount
+                required: true
+  consumes:
+    - contract: payments-api
+      operation: "POST /charges"
+      requestFieldsSent: [amount, currency]
+      requiredResponseFields: [id, status]
+`
+	svc, contracts, err := Parse("orders-v2.yaml", []byte(doc))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(svc.APIProvides()) != 1 || svc.APIProvides()[0].ContractName != "orders-api" {
+		t.Fatalf("expected APIProvides to include orders-api, got %+v", svc.APIProvides())
+	}
+	if len(svc.APIConsumes()) != 1 {
+		t.Fatalf("expected one APIConsumes entry, got %+v", svc.APIConsumes())
+	}
+	consumption := svc.APIConsumes()[0]
+	if consumption.ContractName != "payments-api" || consumption.Operation != "POST /charges" {
+		t.Fatalf("unexpected consumption: %+v", consumption)
+	}
+	if len(contracts) != 1 {
+		t.Fatalf("expected one parsed api contract, got %+v", contracts)
+	}
+	c := contracts[0]
+	if c.Key() != (ir.APIContractKey{Name: "orders-api", ProviderService: "orders", ProviderVersion: "v2"}) {
+		t.Fatalf("unexpected contract key: %+v", c.Key())
+	}
+	ep, ok := c.Endpoint("GET /orders/:id")
+	if !ok {
+		t.Fatalf("expected the declared endpoint to be present")
+	}
+	if !ep.ResponseShape.RequiresField("total_amount") {
+		t.Fatalf("expected total_amount to be a required response field")
+	}
+}
+
+func TestLoadDir_CollectsAPIContracts(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "orders-v2.yaml", `
+apiVersion: rolloutproof.dev/v1beta1
+kind: ServiceContract
+service: orders
+version: v2
+api:
+  provides:
+    - contract: orders-api
+      endpoints:
+        - operation: "GET /orders/:id"
+`)
+	reg, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	contracts := reg.APIContracts()
+	key := ir.APIContractKey{Name: "orders-api", ProviderService: "orders", ProviderVersion: "v2"}
+	if _, ok := contracts[key]; !ok {
+		t.Fatalf("expected orders-api@orders@v2 to be collected, got %+v", contracts)
+	}
+}
+
+// A duplicate APIContractKey can only arise within a single file: two
+// files sharing the same provider (service, version) are already
+// rejected by the Service-level duplicate check before the api.provides
+// loop ever runs. So this exercises the one reachable path — the same
+// contract name declared twice in one file's own provides: list.
+func TestLoadDir_DuplicateAPIContractWithinOneFileIsError(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "a.yaml", `
+apiVersion: rolloutproof.dev/v1beta1
+kind: ServiceContract
+service: orders
+version: v2
+api:
+  provides:
+    - contract: orders-api
+      endpoints:
+        - operation: "GET /orders/:id"
+    - contract: orders-api
+      endpoints:
+        - operation: "DELETE /orders/:id"
+`)
+	if _, err := LoadDir(dir); err == nil {
+		t.Fatalf("expected an error for the same contract name declared twice by one service version")
 	}
 }
 

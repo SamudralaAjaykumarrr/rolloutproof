@@ -87,6 +87,8 @@ type Service struct {
 	schemaReads  []ColumnRef
 	schemaWrites []ColumnRef
 	dependsOn    []ServiceDependency
+	apiProvides  []APIProvision
+	apiConsumes  []APIConsumption
 }
 
 // Key uniquely identifies a Service by name and version, suitable for use
@@ -116,6 +118,18 @@ func (s Service) SchemaWrites() []ColumnRef { return append([]ColumnRef(nil), s.
 // deterministic order.
 func (s Service) DependsOn() []ServiceDependency {
 	return append([]ServiceDependency(nil), s.dependsOn...)
+}
+
+// APIProvides returns the API contracts this service version declares it
+// provides.
+func (s Service) APIProvides() []APIProvision {
+	return append([]APIProvision(nil), s.apiProvides...)
+}
+
+// APIConsumes returns the API contract expectations this service version
+// declares.
+func (s Service) APIConsumes() []APIConsumption {
+	return append([]APIConsumption(nil), s.apiConsumes...)
 }
 
 // ReadsColumn reports whether this service version declares it reads the
@@ -171,11 +185,20 @@ func containsColumnRef(list []ColumnRef, c ColumnRef) bool {
 	return false
 }
 
-// NewService validates and constructs a Service. Duplicate ColumnRef or
-// ServiceDependency entries are deduplicated, not rejected (docs/adr/0007
-// duplicate-handling rule) — the same fact declared twice is still just
-// one fact.
+// NewService validates and constructs a Service with no declared API
+// facts. Duplicate ColumnRef or ServiceDependency entries are
+// deduplicated, not rejected (docs/adr/0007 duplicate-handling rule) —
+// the same fact declared twice is still just one fact.
 func NewService(name, version string, reads, writes []ColumnRef, dependsOn []ServiceDependency) (Service, error) {
+	return NewServiceWithAPI(name, version, reads, writes, dependsOn, nil, nil)
+}
+
+// NewServiceWithAPI is NewService plus RP-API's declared facts
+// (docs/architecture.md §2.5): which contracts this service version
+// provides, and which it consumes. A separate constructor rather than
+// growing NewService's parameter list, so every existing call site
+// (tests included) that has no opinion about API facts stays unchanged.
+func NewServiceWithAPI(name, version string, reads, writes []ColumnRef, dependsOn []ServiceDependency, provides []APIProvision, consumes []APIConsumption) (Service, error) {
 	if name == "" {
 		return Service{}, fmt.Errorf("ir: service name must not be empty")
 	}
@@ -197,6 +220,16 @@ func NewService(name, version string, reads, writes []ColumnRef, dependsOn []Ser
 			return Service{}, fmt.Errorf("ir: service %s@%s: dependency with empty service name", name, version)
 		}
 	}
+	for _, p := range provides {
+		if p.ContractName == "" {
+			return Service{}, fmt.Errorf("ir: service %s@%s: api provision with empty contract name", name, version)
+		}
+	}
+	for _, c := range consumes {
+		if err := c.validate(); err != nil {
+			return Service{}, fmt.Errorf("ir: service %s@%s: %w", name, version, err)
+		}
+	}
 
 	s := Service{
 		Name:         name,
@@ -204,6 +237,8 @@ func NewService(name, version string, reads, writes []ColumnRef, dependsOn []Ser
 		schemaReads:  dedupColumnRefs(reads),
 		schemaWrites: dedupColumnRefs(writes),
 		dependsOn:    dedupServiceDependencies(dependsOn),
+		apiProvides:  append([]APIProvision(nil), provides...),
+		apiConsumes:  append([]APIConsumption(nil), consumes...),
 	}
 	return s, nil
 }
