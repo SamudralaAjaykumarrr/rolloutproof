@@ -46,6 +46,7 @@ func TestRun_ExitCodes(t *testing.T) {
 		{"unsafe api removed response field", "unsafe/api-removed-response-field", exitUnsafe},
 		{"unsafe order consumer behind provider", "unsafe/order-consumer-behind-provider", exitUnsafe},
 		{"unsafe k8s readiness before dependency", "unsafe/k8s-readiness-before-dependency", exitUnsafe},
+		{"unsafe new reader before migration", "unsafe/new-reader-before-migration", exitUnsafe},
 		{"unknown missing metadata", "unknown/missing-service-metadata", exitUnknown},
 		{"unknown rollback target contract missing", "unknown/rollback-target-contract-missing", exitUnknown},
 		{"unknown api provider not in plan", "unknown/api-provider-not-in-plan", exitUnknown},

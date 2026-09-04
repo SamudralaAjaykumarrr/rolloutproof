@@ -106,6 +106,30 @@ func TestRun_UnsafeDropColumnBeforeDrain(t *testing.T) {
 	}
 }
 
+// SC-UNSAFE-004: a new reader depends on a column scheduled to be added
+// only after the rollout completes — the existence-check mechanism
+// (evaluateColumnExistence) firing on a column that was never added yet,
+// not one that was dropped.
+func TestRun_UnsafeNewReaderBeforeMigration(t *testing.T) {
+	diags, err := Run(exampleDir(t, "unsafe/new-reader-before-migration"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictUnsafe {
+		t.Fatalf("expected UNSAFE, got %v (%+v)", got, diags)
+	}
+	d := diagFor(diags, invariant.RPDB001)
+	if d == nil || d.Verdict != ir.VerdictUnsafe {
+		t.Fatalf("expected RP-DB-001 UNSAFE, got %+v", d)
+	}
+	// Cross-layer: RP-K8S-001 should derive its own finding from
+	// RP-DB-001's coexistence-shaped counterexample.
+	k8s := diagFor(diags, invariant.RPK8S001)
+	if k8s == nil || k8s.Verdict != ir.VerdictUnsafe {
+		t.Fatalf("expected RP-K8S-001 to derive UNSAFE from RP-DB-001's finding, got %+v", k8s)
+	}
+}
+
 func TestRun_UnknownMissingServiceMetadata(t *testing.T) {
 	diags, err := Run(exampleDir(t, "unknown/missing-service-metadata"))
 	if err != nil {
