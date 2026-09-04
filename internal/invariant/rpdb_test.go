@@ -167,6 +167,15 @@ func TestRPDB002_WriterFlagshipUnsafe(t *testing.T) {
 	}
 }
 
+// isDropColumnInvariant reports whether id is one of the invariants that
+// can find anything to evaluate against flagshipGraph's plain DropColumn
+// migration — RP-DB-004 (NOT NULL) and RP-DB-005 (rename) correctly find
+// no relevant op at all in this fixture and report SAFE regardless of
+// service metadata, which is vacuous truth, not a missed UNKNOWN.
+func isDropColumnInvariant(id string) bool {
+	return id == RPDB001 || id == RPDB002
+}
+
 func TestRPDB001_UnknownWhenContractMissing(t *testing.T) {
 	g := flagshipGraph(t)
 	services := map[ir.ServiceKey]ir.Service{
@@ -175,6 +184,9 @@ func TestRPDB001_UnknownWhenContractMissing(t *testing.T) {
 	}
 	diags := Evaluate(g, services)
 	for _, d := range diags {
+		if !isDropColumnInvariant(d.InvariantID) {
+			continue
+		}
 		if d.Verdict != ir.VerdictUnknown {
 			t.Fatalf("expected UNKNOWN when a live version's contract is entirely missing, got %v for %s", d.Verdict, d.InvariantID)
 		}
@@ -192,6 +204,9 @@ func TestRPDB001_UnknownWhenTableNotMentioned(t *testing.T) {
 	}
 	diags := Evaluate(g, services)
 	for _, d := range diags {
+		if !isDropColumnInvariant(d.InvariantID) {
+			continue
+		}
 		if d.Verdict != ir.VerdictUnknown {
 			t.Fatalf("expected UNKNOWN when contract metadata never mentions the affected table, got %v", d.Verdict)
 		}

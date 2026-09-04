@@ -148,6 +148,20 @@ func (s Service) TouchesTable(table string) bool {
 	return false
 }
 
+// WritesTable reports whether this service version declares at least one
+// write on the given table. Distinct from TouchesTable: a version that
+// only reads a table (TouchesTable true, WritesTable false) cannot violate
+// RP-DB-004 (it never inserts/updates rows there), so the two facts must
+// not be conflated — see evaluateNotNullIntroduction.
+func (s Service) WritesTable(table string) bool {
+	for _, c := range s.schemaWrites {
+		if c.Table == table {
+			return true
+		}
+	}
+	return false
+}
+
 func containsColumnRef(list []ColumnRef, c ColumnRef) bool {
 	for _, item := range list {
 		if item == c {

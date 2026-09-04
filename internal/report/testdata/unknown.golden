@@ -1,6 +1,6 @@
 ROLLOUT: UNKNOWN
 
-2 invariant(s) evaluated: 0 safe, 0 unsafe, 2 unknown
+4 invariant(s) evaluated: 2 safe, 0 unsafe, 2 unknown
 
 ------------------------------------------------------------
 RP-DB-001  UNKNOWN

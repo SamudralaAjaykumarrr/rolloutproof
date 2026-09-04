@@ -19,7 +19,13 @@ import "github.com/SamudralaAjaykumarrr/rolloutproof/internal/ir"
 func EvaluateRollback(committed []ir.CommittedOp, rollbackTarget ir.Service) ir.RollbackVerdict {
 	verdict := ir.RollbackSafe
 	for _, cop := range committed {
-		if cop.Op.Kind != ir.OpDropColumn {
+		// A bare rename is, for rollback purposes, structurally identical
+		// to a drop of the old column name (docs/invariants.md RP-DB-005):
+		// a version restored against the current schema that still
+		// references the pre-rename name fails exactly as it would if the
+		// column had been dropped outright. TargetColumn() already
+		// resolves to the old name for OpRenameColumn (ir/migration.go).
+		if cop.Op.Kind != ir.OpDropColumn && cop.Op.Kind != ir.OpRenameColumn {
 			continue
 		}
 		target := cop.Op.TargetColumn()

@@ -29,6 +29,8 @@ func Evaluate(g *graph.Graph, services map[ir.ServiceKey]ir.Service) []ir.Diagno
 	return []ir.Diagnostic{
 		evaluateDestructiveColumnRemoval(RPDB001, g, services, ir.Service.ReadsColumn, ir.EvidenceSchemaRead, "reads"),
 		evaluateDestructiveColumnRemoval(RPDB002, g, services, ir.Service.WritesColumn, ir.EvidenceSchemaWrite, "writes"),
+		evaluateNotNullIntroduction(g, services),
+		evaluateRenameWithoutCompatibility(g, services),
 	}
 }
 
@@ -215,12 +217,25 @@ func describeReachability(live []ir.LiveVersion) string {
 // §4.4); ties are broken by the lowest state ID, which is itself
 // deterministic (assigned at construction, docs/architecture.md §4.3).
 func selectShortest(g *graph.Graph, violations []violation) violation {
-	best := violations[0]
-	bestLen := len(g.ShortestPath(best.stateID))
-	for _, v := range violations[1:] {
-		l := len(g.ShortestPath(v.stateID))
-		if l < bestLen || (l == bestLen && v.stateID < best.stateID) {
-			best, bestLen = v, l
+	ids := make([]int, len(violations))
+	for i, v := range violations {
+		ids[i] = v.stateID
+	}
+	return violations[shortestByStateID(g, ids)]
+}
+
+// shortestByStateID returns the index into ids reachable by the fewest
+// transition edges from the graph's start, ties broken by the lowest
+// state ID — the counterexample-selection rule every invariant in this
+// package shares (docs/architecture.md §4.4), factored out so a defect
+// fixed here cannot silently persist in only one invariant's copy.
+func shortestByStateID(g *graph.Graph, ids []int) int {
+	best := 0
+	bestLen := len(g.ShortestPath(ids[0]))
+	for i := 1; i < len(ids); i++ {
+		l := len(g.ShortestPath(ids[i]))
+		if l < bestLen || (l == bestLen && ids[i] < ids[best]) {
+			best, bestLen = i, l
 		}
 	}
 	return best
