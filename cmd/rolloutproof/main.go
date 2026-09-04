@@ -28,14 +28,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 
-	"github.com/SamudralaAjaykumarrr/rolloutproof/internal/graph"
 	"github.com/SamudralaAjaykumarrr/rolloutproof/internal/invariant"
 	"github.com/SamudralaAjaykumarrr/rolloutproof/internal/ir"
-	"github.com/SamudralaAjaykumarrr/rolloutproof/internal/parser/contract"
-	"github.com/SamudralaAjaykumarrr/rolloutproof/internal/parser/rolloutplan"
 	"github.com/SamudralaAjaykumarrr/rolloutproof/internal/report"
+	"github.com/SamudralaAjaykumarrr/rolloutproof/internal/verify"
 )
 
 const usage = `rolloutproof verify <directory>
@@ -59,27 +56,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, usage)
 		return exitToolFailure
 	}
-	dir := args[1]
-
-	plan, err := rolloutplan.LoadDir(dir)
+	diags, err := verify.Run(args[1])
 	if err != nil {
 		fmt.Fprintf(stderr, "rolloutproof: %v\n", err)
 		return exitToolFailure
 	}
 
-	services, err := loadServices(dir)
-	if err != nil {
-		fmt.Fprintf(stderr, "rolloutproof: %v\n", err)
-		return exitToolFailure
-	}
-
-	g, err := graph.Build(plan)
-	if err != nil {
-		fmt.Fprintf(stderr, "rolloutproof: %v\n", err)
-		return exitToolFailure
-	}
-
-	diags := invariant.Evaluate(g, services)
 	fmt.Fprintln(stdout, report.RenderText(diags))
 
 	switch invariant.Aggregate(diags) {
@@ -90,21 +72,4 @@ func run(args []string, stdout, stderr io.Writer) int {
 	default:
 		return exitUnknown
 	}
-}
-
-// loadServices loads contract metadata from <dir>/contracts, if that
-// directory exists. Its absence is not an error — it simply means every
-// invariant that needs a live version's declared facts will report
-// UNKNOWN, which is the correct, honest outcome (docs/vision.md §10),
-// not a tool failure.
-func loadServices(dir string) (map[ir.ServiceKey]ir.Service, error) {
-	contractsDir := filepath.Join(dir, "contracts")
-	if _, err := os.Stat(contractsDir); err != nil {
-		return map[ir.ServiceKey]ir.Service{}, nil
-	}
-	reg, err := contract.LoadDir(contractsDir)
-	if err != nil {
-		return nil, err
-	}
-	return reg.Services(), nil
 }
