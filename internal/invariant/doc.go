@@ -53,9 +53,27 @@
 //     since no internal/config package exists yet to declare
 //     docs/architecture.md §2.1.1's project-wide version scheme).
 //
-// RP-K8S-* is documented but not yet implemented; see the catalog's own
-// "Notes on catalog evolution" for how new invariant IDs are added
-// without disturbing existing ones.
+// The RP-K8S family's highest-value rules (rpk8s.go) are evaluated via
+// EvaluateK8s:
+//
+//   - RP-K8S-001: rollout permits a version pair to coexist that another
+//     family already independently proved incompatible — V1 has no
+//     project-config mechanism to declare compatibility facts outside
+//     that, so this is currently a "derived transitively only" echo of
+//     an existing finding (see EvaluateK8s's own doc comment).
+//   - RP-K8S-002: a workload's readiness admits traffic before a
+//     declared dependency is ready.
+//   - RP-K8S-003: a destructive migration commits while a draining
+//     replica with a PreStop hook may still run schema-dependent
+//     shutdown code (V1 scoping: approximated via the coexistence state,
+//     since internal/graph does not yet model a distinct terminating-
+//     replica-population dimension — see evaluateTerminationConflict's
+//     own doc comment).
+//   - RP-K8S-004: a coarse, advisory (ir.Diagnostic.Advisory) structural
+//     check — MaxSurge/MaxUnavailable widening coexistence combined with
+//     an undeclared destructive migration during rollout — that trades
+//     precision for recall by design and does not by itself veto the
+//     overall rollout verdict (Aggregate).
 //
 // An invariant here never inspects raw YAML/SQL: it reasons only over
 // ir.RolloutState, ir.CommittedOp, and ir.Service facts already lifted

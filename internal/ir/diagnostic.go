@@ -57,4 +57,16 @@ type Diagnostic struct {
 	// zero value) is the correct value when rollback was not evaluated
 	// at all, not merely when it was evaluated and found unclear.
 	RollbackVerdict RollbackVerdict
+
+	// Advisory marks a coarse, over-inclusive finding that trades
+	// precision for recall by design (docs/invariants.md RP-K8S-004's own
+	// documented Limitations: "a project may configure it as advisory...
+	// precisely because it can fire even when [higher-precision
+	// invariants] independently return SAFE with full evidence"). The
+	// zero value, false, is correct for every high-confidence invariant —
+	// an Advisory UNSAFE diagnostic is still reported in full, but does
+	// not by itself veto the overall rollout verdict (Aggregate), keeping
+	// coarse and high-confidence findings visibly distinguished rather
+	// than silently blended into one blocking signal.
+	Advisory bool
 }

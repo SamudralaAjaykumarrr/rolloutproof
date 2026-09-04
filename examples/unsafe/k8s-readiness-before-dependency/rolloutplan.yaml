@@ -1,0 +1,14 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+
+# auth is the workload actually transitioning in this plan; api is
+# already running and stays running throughout (a static workload), but
+# depends on auth and does not gate its own readiness on auth's — the
+# realistic shape of SC-UNSAFE-008 given RolloutProof V1's single
+# primary-workload-transition CLI convention (docs/parser/rolloutplan).
+workload: auth
+fromVersion: v1
+toVersion: v2
+
+staticWorkloads:
+  - api

@@ -52,7 +52,11 @@ func RenderText(diags []ir.Diagnostic) string {
 }
 
 func renderDiagnostic(b *strings.Builder, d ir.Diagnostic) {
-	fmt.Fprintf(b, "%s  %s\n\n", d.InvariantID, d.Verdict)
+	if d.Advisory {
+		fmt.Fprintf(b, "%s  %s (advisory — does not block ROLLOUT verdict)\n\n", d.InvariantID, d.Verdict)
+	} else {
+		fmt.Fprintf(b, "%s  %s\n\n", d.InvariantID, d.Verdict)
+	}
 	b.WriteString(d.Summary)
 	b.WriteString("\n")
 

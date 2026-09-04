@@ -246,6 +246,34 @@ func TestRun_UnknownAPIProviderContractMissing(t *testing.T) {
 	}
 }
 
+// --- k8s: safe + unsafe ---
+
+func TestRun_SafeK8sReadinessWaitsOnDependency(t *testing.T) {
+	diags, err := Run(exampleDir(t, "safe/k8s-readiness-waits-on-dependency"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictSafe {
+		t.Fatalf("expected SAFE, got %v (%+v)", got, diags)
+	}
+}
+
+// SC-UNSAFE-008: readiness admits traffic before a declared dependency
+// is ready.
+func TestRun_UnsafeK8sReadinessBeforeDependency(t *testing.T) {
+	diags, err := Run(exampleDir(t, "unsafe/k8s-readiness-before-dependency"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictUnsafe {
+		t.Fatalf("expected UNSAFE, got %v (%+v)", got, diags)
+	}
+	d := diagFor(diags, invariant.RPK8S002)
+	if d == nil || d.Verdict != ir.VerdictUnsafe {
+		t.Fatalf("expected RP-K8S-002 UNSAFE, got %+v", d)
+	}
+}
+
 // --- ordering: safe + unsafe ---
 
 func TestRun_SafeOrderConsumerCompatible(t *testing.T) {

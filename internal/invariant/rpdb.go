@@ -59,9 +59,21 @@ func evaluateColumnFamily(plan ir.RolloutPlan, g *graph.Graph, services map[ir.S
 // Aggregate folds a set of Diagnostics into the single overall rollout
 // verdict, per the dominance rule Unsafe > Unknown > Safe
 // (docs/architecture.md §6).
+// Aggregate skips an Advisory diagnostic's own contribution when it is
+// UNSAFE — a coarse, over-inclusive finding (docs/invariants.md
+// RP-K8S-004) is still reported in full by report.RenderText, but does
+// not by itself veto the overall rollout verdict, keeping it visibly
+// distinguished from high-confidence findings (ir.Diagnostic.Advisory's
+// own doc comment). An Advisory diagnostic reporting UNKNOWN (none do
+// today, but the rule is general) still dominates normally — the
+// exemption is specifically for the coarse-recall UNSAFE case docs
+// describe, not for uncertainty.
 func Aggregate(diags []ir.Diagnostic) ir.Verdict {
 	v := ir.VerdictSafe
 	for _, d := range diags {
+		if d.Advisory && d.Verdict == ir.VerdictUnsafe {
+			continue
+		}
 		v = ir.Combine(v, d.Verdict)
 	}
 	return v
