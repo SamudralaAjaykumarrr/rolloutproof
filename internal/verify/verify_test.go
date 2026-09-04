@@ -481,6 +481,30 @@ func TestRun_MutationAddingRollbackDependencyOnDroppedColumnFlipsToUnsafe(t *tes
 	}
 }
 
+// Scheduling the same destructive migration strictly after full rollout
+// completion (i.e., after old replicas have fully drained) instead of
+// during it must flip UNSAFE to SAFE — SC-SAFE-006's mechanism, proven
+// here as a mutation of the flagship UNSAFE fixture rather than a
+// separately hand-built example, so the result is demonstrably caused by
+// the phase change alone.
+func TestRun_MutationDrainingBeforeDestructiveMigrationRemovesHazard(t *testing.T) {
+	dir := t.TempDir()
+	copyDir(t, exampleDir(t, "unsafe/drop-column-before-drain"), dir)
+	replaceInFile(t, filepath.Join(dir, "rolloutplan.yaml"), "phase: during", "phase: after")
+	// api@v2 must not itself depend on the dropped column, or the
+	// after-rollout end state would independently violate RP-DB-001/002
+	// too — matching contracts/api-v2.yaml's existing declaration, which
+	// already excludes users.email.
+
+	diags, err := Run(dir)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictSafe {
+		t.Fatalf("expected SAFE once the migration is scheduled after full rollout completion, got %v (%+v)", got, diags)
+	}
+}
+
 // Switching the rollout strategy to Recreate removes the coexistence
 // state entirely, but must NOT by itself flip this hazard to SAFE:
 // PhaseDuringRollout's declared commit-time ambiguity
