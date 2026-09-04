@@ -35,7 +35,9 @@ failure — see "Deciding what to do with UNKNOWN" below.
 
 This repository's own `action.yml` is a composite action any other
 repository can reference directly, without vendoring or building
-anything by hand:
+anything by hand. No tagged release exists yet (`docs/RELEASING.md`), so
+the examples below pin `@main`; switch to a `@vX.Y.Z` tag once one is
+cut:
 
 ```yaml
 name: Verify rollout safety
@@ -49,7 +51,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: SamudralaAjaykumarrr/rolloutproof@v1
+      - uses: SamudralaAjaykumarrr/rolloutproof@main
         with:
           directory: deploy/checkout-rollout
 ```
@@ -91,7 +93,7 @@ repo's own `go.mod`) and runs `verify` against `inputs.directory`.
 ### Reading `verdict`/`exit-code` in a later step
 
 ```yaml
-      - uses: SamudralaAjaykumarrr/rolloutproof@v1
+      - uses: SamudralaAjaykumarrr/rolloutproof@main
         id: rp
         with:
           directory: deploy/checkout-rollout
@@ -104,7 +106,7 @@ repo's own `go.mod`) and runs `verify` against `inputs.directory`.
 ## Producing a JSON or SARIF artifact
 
 ```yaml
-      - uses: SamudralaAjaykumarrr/rolloutproof@v1
+      - uses: SamudralaAjaykumarrr/rolloutproof@main
         with:
           directory: deploy/checkout-rollout
           format: sarif

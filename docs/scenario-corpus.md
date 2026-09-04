@@ -1,11 +1,18 @@
 # RolloutProof — Scenario Corpus
 
-This corpus is the intended regression-test fixture set (`architecture.md`
-§9, `tests/`): each scenario becomes a small artifact set (manifest +
-migration + contract metadata) with an asserted expected result. None of
-these are implemented yet — this document defines what "correct" means for
-each, ahead of implementation, so that the implementation is built to pass
-a pre-agreed bar rather than having its bar defined after the fact.
+This corpus was written ahead of implementation, as the regression-test
+fixture set (`architecture.md` §9, `tests/`) implementation would be built
+to pass — each scenario a small artifact set (manifest + migration +
+contract metadata) with an asserted expected result, so the correctness
+bar was pre-agreed rather than defined after the fact.
+
+All 23 scenarios below are now implemented and passing as real fixtures
+under `examples/{safe,unsafe,unknown}/` (`go run ./cmd/eval` verifies
+this on every run — see the README's quickstart for sample output). The
+implemented fixture set has since grown beyond this original 23 to 28,
+covering additional cases found during later adversarial review
+(`docs/ADVERSARIAL_REVIEW.md`); `cmd/eval`'s own output is the
+authoritative current count and pass/fail record, not this document.
 
 Every scenario cites the exact IR facts (`architecture.md` §2) that make it
 SAFE/UNSAFE/UNKNOWN, so that a reviewer can check the *reasoning*, not just

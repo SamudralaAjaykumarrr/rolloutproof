@@ -304,15 +304,17 @@ extends.
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: SamudralaAjaykumarrr/rolloutproof@v1
+- uses: SamudralaAjaykumarrr/rolloutproof@main
   with:
     directory: deploy/checkout-rollout
 ```
 
-Exits 0/1/2 exactly like the CLI; see `docs/CI.md` for the full reusable
-Action (inputs/outputs, `fail-on-unknown`), the generic exit-code
-contract any other CI system can use directly, and this repository's
-own self-testing workflow (`.github/workflows/ci.yml`).
+No tagged release exists yet (`docs/RELEASING.md`), so `@main` is the
+only ref that currently resolves; pin to a `@vX.Y.Z` tag instead once one
+is cut. Exits 0/1/2 exactly like the CLI; see `docs/CI.md` for the full
+reusable Action (inputs/outputs, `fail-on-unknown`), the generic
+exit-code contract any other CI system can use directly, and this
+repository's own self-testing workflow (`.github/workflows/ci.yml`).
 
 ## JSON and SARIF output
 
@@ -356,6 +358,8 @@ JSON carries a versioned `schemaVersion` field; SARIF 2.1.0 is ready for
 | `docs/FALSE_POSITIVES.md` | What's proven, where UNKNOWN fires, what's advisory, known model gaps, and SAFE's assumptions |
 | `docs/CI.md` | The reusable GitHub Action, the generic exit-code contract, and JSON/SARIF artifact usage |
 | `docs/adr/` | Design decisions and the alternatives rejected for each |
+| `docs/review-start.md` | Start here to review this project: a 5-minute runnable path and the primary challenge (find a false SAFE) |
+| `docs/ADVERSARIAL_REVIEW.md` | The full adversarial methodology: what was attacked, what was found and fixed, and how to challenge a verdict or report a false SAFE/UNSAFE/UNKNOWN |
 
 ## Evaluating the scenario corpus yourself
 
@@ -366,6 +370,17 @@ go run ./cmd/eval
 Runs the real pipeline against every fixture under `examples/` and
 reports pass/fail against each directory's declared expectation, plus
 runtime — a deterministic regression suite, not a demo.
+
+## Reviewing this project / reporting a false verdict
+
+Trying to break RolloutProof, not just use it? Start at
+`docs/review-start.md` for a 5-minute runnable path and the primary
+challenge (find a rollout that's unsafe under RolloutProof's own modeled
+assumptions but verifies SAFE). `docs/ADVERSARIAL_REVIEW.md` has the full
+methodology and "How to challenge a verdict" before you conclude a
+surprising result is a bug. Report a confirmed false SAFE, false UNSAFE,
+or false UNKNOWN with the
+[Break RolloutProof issue template](../../issues/new?template=break-rolloutproof.yml).
 
 ## Contributing
 

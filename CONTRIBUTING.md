@@ -130,7 +130,11 @@ Open an issue with:
 If the "bug" is a verdict you disagree with, please first check
 `docs/FALSE_POSITIVES.md` — it documents the precision boundaries and
 known model gaps this project is already aware of; if your case isn't
-already listed there, it's a genuinely useful report.
+already listed there, it's a genuinely useful report. `docs/review-start.md`
+and `docs/ADVERSARIAL_REVIEW.md` ("How to challenge a verdict") walk
+through this in more depth, and the "Break RolloutProof" issue template
+(`.github/ISSUE_TEMPLATE/break-rolloutproof.yml`) is the preferred way to
+report a false SAFE, false UNSAFE, or false UNKNOWN.
 
 For a suspected **security** issue, see `SECURITY.md` instead of
 opening a public issue.
