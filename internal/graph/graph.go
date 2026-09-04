@@ -197,6 +197,21 @@ func liveFor(progressions [][]workloadStep, c versionCombo) []ir.LiveVersion {
 // OpUnclassified operation left the schema state genuinely unknown from
 // that point forward; see ir.SchemaState.Indeterminate).
 func Build(plan ir.RolloutPlan) (*Graph, error) {
+	return build(plan, nil, false)
+}
+
+// build is Build's shared implementation, additionally seeded with
+// history that is already baked into plan.BaseSchema but did not come
+// from plan.Migrations: priorCommittedOps is prepended to every node's
+// SchemaState.CommittedOps (carrying along whatever per-op evidence, e.g.
+// CommittedOp.PriorType, was already computed for it), and
+// priorIndeterminate forces every node Indeterminate when true. Build
+// itself always passes (nil, false) — an ordinary forward plan's
+// BaseSchema has no history preceding it. BuildRollback is the one caller
+// that passes something else: see its own doc comment for why a rollback
+// graph must carry the forward plan's full committed history forward
+// even though the rollback plan itself commits no migrations of its own.
+func build(plan ir.RolloutPlan, priorCommittedOps []ir.CommittedOp, priorIndeterminate bool) (*Graph, error) {
 	var beforeMigs, duringMigs, afterMigs []ir.MigrationTiming
 	for _, mt := range plan.Migrations {
 		switch mt.Phase {
@@ -211,7 +226,8 @@ func Build(plan ir.RolloutPlan) (*Graph, error) {
 		}
 	}
 
-	baseSchema, baseCommitted, baseIndeterminate := applyAll(plan.BaseSchema, nil, beforeMigs)
+	baseSchema, baseCommitted, baseIndeterminate := applyAll(plan.BaseSchema, priorCommittedOps, beforeMigs)
+	baseIndeterminate = baseIndeterminate || priorIndeterminate
 
 	progressions := make([][]workloadStep, len(plan.Workloads))
 	for i, wc := range plan.Workloads {
@@ -358,6 +374,25 @@ func Build(plan ir.RolloutPlan) (*Graph, error) {
 // distinct, not-yet-modeled action; see docs/architecture.md §5's
 // "migration rollback vs. operational rollback".
 //
+// The rollback plan itself declares no Migrations (nothing commits during
+// an operational rollback), but its graph's nodes still carry forward's
+// full CommittedOps trail (and Indeterminate flag) forward as
+// already-true history baked into BaseSchema — not just the resulting
+// Schema value. This matters because two invariants key their entire
+// violation scan off CommittedOps rather than the Schema snapshot itself:
+// RP-DB-003 (evaluateTypeCompatibility, which also needs each op's
+// CommittedOp.PriorType — computed once during forward's own Build and
+// carried along unchanged here, never recomputed) and RP-DB-005
+// (evaluateRenameWithoutCompatibility). Without this, a type change or
+// rename committed anywhere in the forward rollout would leave the
+// rollback graph with zero CommittedOps to scan, so RP-ROLLBACK-002's
+// re-evaluation of the column-compatibility family against this graph
+// would silently find no violation regardless of what the rollback
+// target actually depends on — a false SAFE, not merely an
+// under-approximation, and the kind of gap adversarial review must close
+// generally rather than special-case (see internal/invariant's own
+// regression test for the exact scenario this was caught with).
+//
 // V1 scoping: like the rest of the graph builder, this supports exactly
 // one workload change per plan, matching internal/parser/rolloutplan's
 // single-workload directory convention — forward must have exactly one
@@ -389,7 +424,7 @@ func BuildRollback(forward ir.RolloutPlan, forwardGraph *Graph) (ir.RolloutPlan,
 	if err != nil {
 		return ir.RolloutPlan{}, nil, fmt.Errorf("graph: BuildRollback: %w", err)
 	}
-	rbGraph, err := Build(rbPlan)
+	rbGraph, err := build(rbPlan, targetState.SchemaState.CommittedOps, targetState.SchemaState.Indeterminate)
 	if err != nil {
 		return ir.RolloutPlan{}, nil, fmt.Errorf("graph: BuildRollback: %w", err)
 	}
