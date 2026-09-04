@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,6 +66,88 @@ func TestRun_ExitCodes(t *testing.T) {
 				t.Fatalf("expected rendered output to start with the overall verdict, got:\n%s", stdout.String())
 			}
 		})
+	}
+}
+
+func TestRun_VersionCommand(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	got := run([]string{"version"}, &stdout, &stderr)
+	if got != exitSafe {
+		t.Fatalf("exit code = %d, want %d", got, exitSafe)
+	}
+	if !strings.HasPrefix(stdout.String(), "rolloutproof ") {
+		t.Fatalf("expected version output to start with \"rolloutproof \", got: %s", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected no stderr output, got: %s", stderr.String())
+	}
+}
+
+func TestRun_FormatJSON(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	dir := exampleDir(t, "unsafe/drop-column-before-drain")
+	got := run([]string{"verify", "--format", "json", dir}, &stdout, &stderr)
+	if got != exitUnsafe {
+		t.Fatalf("exit code = %d, want %d", got, exitUnsafe)
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
+		t.Fatalf("expected valid JSON output, got error %v; output:\n%s", err, stdout.String())
+	}
+	if parsed["verdict"] != "UNSAFE" {
+		t.Fatalf("expected verdict UNSAFE in JSON output, got %v", parsed["verdict"])
+	}
+}
+
+func TestRun_FormatSARIF(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	dir := exampleDir(t, "unsafe/drop-column-before-drain")
+	got := run([]string{"verify", "--format", "sarif", dir}, &stdout, &stderr)
+	if got != exitUnsafe {
+		t.Fatalf("exit code = %d, want %d", got, exitUnsafe)
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
+		t.Fatalf("expected valid SARIF (JSON) output, got error %v; output:\n%s", err, stdout.String())
+	}
+	if parsed["version"] != "2.1.0" {
+		t.Fatalf("expected SARIF version 2.1.0, got %v", parsed["version"])
+	}
+}
+
+func TestRun_FormatUnknownIsToolFailure(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	dir := exampleDir(t, "safe/additive-column")
+	got := run([]string{"verify", "--format", "yaml", dir}, &stdout, &stderr)
+	if got != exitToolFailure {
+		t.Fatalf("exit code = %d, want %d", got, exitToolFailure)
+	}
+	if stderr.Len() == 0 {
+		t.Fatalf("expected an error message on stderr for an unknown format")
+	}
+}
+
+func TestRun_OutputFlagWritesFile(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	dir := exampleDir(t, "safe/additive-column")
+	outPath := filepath.Join(t.TempDir(), "report.json")
+	got := run([]string{"verify", "--format", "json", "--output", outPath, dir}, &stdout, &stderr)
+	if got != exitSafe {
+		t.Fatalf("exit code = %d, want %d", got, exitSafe)
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected no stdout output when --output is set, got: %s", stdout.String())
+	}
+	data, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("expected --output file to be written: %v", err)
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("expected valid JSON in --output file, got error %v", err)
+	}
+	if parsed["verdict"] != "SAFE" {
+		t.Fatalf("expected verdict SAFE, got %v", parsed["verdict"])
 	}
 }
 
