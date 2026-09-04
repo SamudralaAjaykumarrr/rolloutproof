@@ -1,0 +1,113 @@
+name: 'RolloutProof'
+description: >-
+  Verify whether a proposed Kubernetes Deployment + PostgreSQL migration
+  rollout is safe, and fail CI on UNSAFE (or on UNKNOWN, if configured).
+author: 'RolloutProof'
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  directory:
+    description: >-
+      Path to the rollout plan directory (the internal/parser/rolloutplan
+      convention: deployment.yaml, schema.yaml, rolloutplan.yaml, an
+      optional contracts/ subdirectory — see examples/ in this repo).
+    required: true
+  format:
+    description: 'Output format: text, json, or sarif.'
+    required: false
+    default: 'text'
+  output:
+    description: >-
+      Path to write the report to. When set, this step's own log only
+      shows the rendered report on failure; pair with actions/upload-artifact
+      to keep the file (see docs/CI.md).
+    required: false
+    default: ''
+  fail-on-unknown:
+    description: >-
+      When "true", an UNKNOWN verdict fails this step (exit code 2 is
+      treated as a failure) in addition to UNSAFE. Default "false" —
+      UNKNOWN does not fail the build by default, since it is a real,
+      positive "insufficient evidence" answer (docs/vision.md §10), not
+      necessarily an actionable defect on its own.
+    required: false
+    default: 'false'
+
+outputs:
+  verdict:
+    description: 'SAFE, UNSAFE, or UNKNOWN.'
+    value: ${{ steps.run.outputs.verdict }}
+  exit-code:
+    description: 'The exit code rolloutproof verify produced (0/1/2/>2).'
+    value: ${{ steps.run.outputs.exit-code }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version-file: ${{ github.action_path }}/go.mod
+
+    - name: Build rolloutproof
+      shell: bash
+      run: go build -o ${{ runner.temp }}/rolloutproof ${{ github.action_path }}/cmd/rolloutproof
+
+    - name: Run rolloutproof verify
+      id: run
+      shell: bash
+      # Inputs are passed via env, never interpolated directly into the
+      # script: a `${{ inputs.* }}` expression is substituted into the
+      # literal script text before bash ever runs it, so an untrusted
+      # value (e.g. a directory name derived from a PR-controlled
+      # matrix) could otherwise inject arbitrary shell commands. Reading
+      # them back as ordinary, quoted environment variables closes that
+      # off entirely — this is the same reasoning docs/SECURITY.md gives
+      # for treating workflow-expression interpolation as untrusted.
+      env:
+        RP_BIN: ${{ runner.temp }}/rolloutproof
+        RP_DIRECTORY: ${{ inputs.directory }}
+        RP_FORMAT: ${{ inputs.format }}
+        RP_OUTPUT: ${{ inputs.output }}
+        RP_FAIL_ON_UNKNOWN: ${{ inputs.fail-on-unknown }}
+      run: |
+        set +e
+        ARGS=(verify --format "$RP_FORMAT")
+        if [ -n "$RP_OUTPUT" ]; then
+          ARGS+=(--output "$RP_OUTPUT")
+        fi
+        ARGS+=("$RP_DIRECTORY")
+
+        if [ -n "$RP_OUTPUT" ]; then
+          "$RP_BIN" "${ARGS[@]}"
+          code=$?
+        else
+          out="$("$RP_BIN" "${ARGS[@]}")"
+          code=$?
+          echo "$out"
+        fi
+
+        case "$code" in
+          0) verdict=SAFE ;;
+          1) verdict=UNSAFE ;;
+          2) verdict=UNKNOWN ;;
+          *) verdict=TOOL_FAILURE ;;
+        esac
+        echo "verdict=$verdict" >> "$GITHUB_OUTPUT"
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+
+        if [ "$code" -eq 1 ]; then
+          echo "::error::rolloutproof: UNSAFE — see the report above (or --output artifact) for the violated invariant(s) and counterexample."
+          exit 1
+        fi
+        if [ "$code" -eq 2 ] && [ "$RP_FAIL_ON_UNKNOWN" = "true" ]; then
+          echo "::error::rolloutproof: UNKNOWN with fail-on-unknown: true — see the report above for the missing evidence."
+          exit 1
+        fi
+        if [ "$code" -gt 2 ]; then
+          echo "::error::rolloutproof: tool failure (exit $code) — this is not a verification result; see the log above."
+          exit "$code"
+        fi
+        exit 0

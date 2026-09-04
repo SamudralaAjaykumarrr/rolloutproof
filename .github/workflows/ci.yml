@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Test, vet, and scenario corpus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: gofmt
+        run: |
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then
+            echo "The following files are not gofmt-formatted:"
+            echo "$out"
+            exit 1
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go build
+        run: go build ./...
+
+      - name: go test
+        run: go test ./...
+
+      - name: go test -race
+        run: go test -race ./...
+
+      - name: Scenario corpus evaluation
+        run: go run ./cmd/eval
+
+      - name: git diff --check (no whitespace conflicts)
+        run: git diff --check
+
+  # dogfood: exercises RolloutProof against its own example rollout
+  # artifacts exactly the way a downstream repository's CI would, per
+  # docs/CI.md. This job's own exit code is not the point (a SAFE and an
+  # UNSAFE example are both expected results, not job failures) — it
+  # demonstrates the exit-code contract and produces the JSON/SARIF
+  # artifacts a real integration would consume.
+  self-verify:
+    name: Verify RolloutProof's own examples (JSON/SARIF artifacts)
+    runs-on: ubuntu-latest
+    # security-events: write is required by github/codeql-action/upload-sarif
+    # below; the workflow-level `permissions: contents: read` alone would
+    # make that step fail with an authorization error.
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build rolloutproof
+        run: go build -o rolloutproof ./cmd/rolloutproof
+
+      - name: Version
+        run: ./rolloutproof version
+
+      - name: Verify a SAFE example (human-readable)
+        run: ./rolloutproof verify examples/safe/additive-column
+
+      - name: Verify an UNSAFE example (human-readable; exit 1 is expected)
+        run: |
+          set +e
+          ./rolloutproof verify examples/unsafe/drop-column-before-drain
+          code=$?
+          set -e
+          echo "exit code: $code"
+          if [ "$code" -ne 1 ]; then
+            echo "expected exit code 1 (UNSAFE) for this fixture, got $code"
+            exit 1
+          fi
+
+      - name: Produce a JSON report artifact
+        run: ./rolloutproof verify --format json --output report.json examples/unsafe/drop-column-before-drain || true
+
+      - name: Produce a SARIF report artifact
+        run: ./rolloutproof verify --format sarif --output report.sarif examples/unsafe/drop-column-before-drain || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rolloutproof-reports
+          path: |
+            report.json
+            report.sarif
+
+      - name: Upload SARIF to code scanning
+        # continue-on-error: a fork of this repo may not have code
+        # scanning enabled (it requires GitHub Advanced Security on
+        # private repos, and is opt-in even on some public ones), and
+        # that should not fail an otherwise-successful demonstration of
+        # RolloutProof's own SARIF output.
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: report.sarif
