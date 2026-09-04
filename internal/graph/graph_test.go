@@ -442,6 +442,119 @@ func TestBuild_RejectsOversizedPlan(t *testing.T) {
 	}
 }
 
+// State-space completeness attack: with two workloads BOTH genuinely
+// transitioning (FromVersion != ToVersion, both RollingUpdate with
+// coexistence) at once, the graph must contain every point in the full
+// 3x3 progression lattice — including the "worst case" mid-point where
+// BOTH services have old and new simultaneously live (four LiveVersion
+// entries at once) — not just the corners or a single workload's own
+// progression with the other silently held fixed. Every graph test
+// elsewhere in this package exercises exactly one transitioning workload
+// (plus, elsewhere in the invariant package's own tests, one *static*
+// non-transitioning dependency workload) — this is the one place two
+// independently progressing workloads are combined, which is exactly
+// where an interleaving could be missed if buildVersionCombos's cartesian
+// product were ever narrowed to "advance one workload fully before the
+// other starts" instead of the full product it is by construction.
+func TestBuild_TwoSimultaneousWorkloadTransitions_FullLatticeReachable(t *testing.T) {
+	front, err := ir.NewWorkload(ir.Workload{Name: "front", ServiceName: "front", Version: "v2", Replicas: 3, Strategy: rollingUpdateStrategy()})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	back, err := ir.NewWorkload(ir.Workload{Name: "back", ServiceName: "back", Version: "v2", Replicas: 3, Strategy: rollingUpdateStrategy()})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	plan, err := ir.NewRolloutPlan(ir.RolloutPlan{
+		BaseSchema: mustSchema(t, mustTable(t, "t", []ir.Column{{Name: "id", Type: "integer"}})),
+		Workloads: []ir.WorkloadChange{
+			{Workload: front, FromVersion: "v1", ToVersion: "v2"},
+			{Workload: back, FromVersion: "v1", ToVersion: "v2"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	g, err := Build(plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// 2 workloads x 3 progression steps each x 2^0 duringVectors (no
+	// migrations) = 9 nodes exactly — no more (impossible states), no
+	// fewer (omitted interleavings).
+	if len(g.Nodes) != 9 {
+		t.Fatalf("expected exactly 9 nodes (3x3 lattice), got %d: %+v", len(g.Nodes), g.Nodes)
+	}
+
+	frontVersions := func(live []ir.LiveVersion) map[string]bool {
+		out := map[string]bool{}
+		for _, lv := range live {
+			if lv.ServiceName == "front" {
+				out[lv.Version] = true
+			}
+		}
+		return out
+	}
+	backVersions := func(live []ir.LiveVersion) map[string]bool {
+		out := map[string]bool{}
+		for _, lv := range live {
+			if lv.ServiceName == "back" {
+				out[lv.Version] = true
+			}
+		}
+		return out
+	}
+
+	// Every one of the 3x3 = 9 combinations of {front step} x {back
+	// step} must be present among the reachable states, including the
+	// center point where BOTH are simultaneously coexisting.
+	want := []struct{ front, back []string }{
+		{[]string{"v1"}, []string{"v1"}},
+		{[]string{"v1"}, []string{"v1", "v2"}},
+		{[]string{"v1"}, []string{"v2"}},
+		{[]string{"v1", "v2"}, []string{"v1"}},
+		{[]string{"v1", "v2"}, []string{"v1", "v2"}}, // the four-versions-live worst case
+		{[]string{"v1", "v2"}, []string{"v2"}},
+		{[]string{"v2"}, []string{"v1"}},
+		{[]string{"v2"}, []string{"v1", "v2"}},
+		{[]string{"v2"}, []string{"v2"}},
+	}
+	for _, w := range want {
+		found := false
+		for _, n := range g.Nodes {
+			fv, bv := frontVersions(n.Live), backVersions(n.Live)
+			if len(fv) != len(w.front) || len(bv) != len(w.back) {
+				continue
+			}
+			match := true
+			for _, v := range w.front {
+				match = match && fv[v]
+			}
+			for _, v := range w.back {
+				match = match && bv[v]
+			}
+			if match {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected a reachable state with front=%v, back=%v, found none among %d nodes", w.front, w.back, len(g.Nodes))
+		}
+	}
+
+	// No node may show a "front" version-set that never legitimately
+	// appears in front's own progression (e.g. an empty set, which
+	// AllowsCoexistence's RollingUpdate progression never produces) —
+	// the impossible-state side of the same completeness property.
+	for _, n := range g.Nodes {
+		if len(frontVersions(n.Live)) == 0 || len(backVersions(n.Live)) == 0 {
+			t.Errorf("node %d has an empty version set for a coexistence-capable workload, which should never be reachable: %+v", n.ID, n.Live)
+		}
+	}
+}
+
 func TestBuild_RejectsPhaseUnknown(t *testing.T) {
 	// ir.NewRolloutPlan already rejects PhaseUnknown, but Build must also
 	// defend itself if ever called directly with an unvalidated plan.
