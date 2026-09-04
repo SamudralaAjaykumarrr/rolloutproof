@@ -206,12 +206,26 @@ func evaluateReadinessBeforeDependency(plan ir.RolloutPlan, g *graph.Graph) ir.D
 // past a migration commit point") is not implemented in internal/graph's
 // RolloutState (docs/graph's own package doc lists this as a known,
 // deferred refinement, alongside dependency-based state pruning) — so
-// this approximates the terminating population using the same
-// coexistence state RP-DB-001/002 already model, gated additionally on
-// HasPreStopHook and a nonzero GracePeriodSeconds (evidence that a
-// drain-time hook actually runs schema-dependent code), rather than
-// inventing a new graph dimension this session's time budget doesn't
-// allow verifying end to end.
+// this approximates the terminating population using the coexistence
+// state RP-DB-001/002 already model (old and new both live: the window
+// in which Kubernetes may be draining old replicas as new ones become
+// ready), gated additionally on HasPreStopHook and a nonzero
+// GracePeriodSeconds (evidence that a drain-time hook actually runs
+// schema-dependent code).
+//
+// This approximation is only defensible for RollingUpdate: Recreate (and
+// an unrecognized/unclassified strategy) has no coexistence state at
+// all in this graph model — old fully stops before new starts, modeled
+// as a single instantaneous edge (docs/graph's own package doc), not a
+// state — so there is no reachable state in which "old" can even be
+// named as the live version whose shutdown code might be running.
+// Silently treating Recreate's *pre-rollout* old-only state (old is
+// simply serving normally, nothing draining) as equivalent to
+// "draining" would be a false positive this invariant must not produce;
+// reporting it UNKNOWN for that workload, rather than guessing SAFE or
+// UNSAFE, is what docs/vision.md §10 requires when the evidence a check
+// needs — here, a state distinguishing "draining" from "not yet
+// touched" — simply is not representable yet.
 func evaluateTerminationConflict(plan ir.RolloutPlan, g *graph.Graph) ir.Diagnostic {
 	drainingWorkloads := make(map[string]ir.WorkloadChange)
 	for _, wc := range plan.Workloads {
@@ -227,6 +241,19 @@ func evaluateTerminationConflict(plan ir.RolloutPlan, g *graph.Graph) ir.Diagnos
 		}
 	}
 
+	gaps := newGapSet()
+	evaluable := make(map[string]ir.WorkloadChange, len(drainingWorkloads))
+	for name, wc := range drainingWorkloads {
+		if wc.Workload.Strategy.Type != ir.StrategyRollingUpdate {
+			gaps.add(ir.EvidenceGap{
+				Field:  fmt.Sprintf("Workload %s termination window under strategy %s", wc.Workload.Name, wc.Workload.Strategy.Type),
+				Reason: "this strategy has no reachable state distinctly representing old replicas draining (docs/graph models the old-stops-then-new-starts transition as a single edge, not a state) — cannot rule out a destructive migration committing during that window",
+			})
+			continue
+		}
+		evaluable[name] = wc
+	}
+
 	nodes := append([]ir.RolloutState(nil), g.Nodes...)
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].ID < nodes[j].ID })
 
@@ -240,12 +267,15 @@ func evaluateTerminationConflict(plan ir.RolloutPlan, g *graph.Graph) ir.Diagnos
 		if s.SchemaState.Indeterminate {
 			continue
 		}
+		if len(s.Live) < 2 {
+			continue // draining is only representable as the coexistence state — see this function's doc comment
+		}
 		for _, cop := range s.SchemaState.CommittedOps {
 			if cop.Op.Kind != ir.OpDropColumn {
 				continue // a terminating replica's stale in-flight code assumes column existence; only removal is unambiguous here
 			}
 			for _, lv := range s.Live {
-				wc, draining := drainingWorkloads[lv.ServiceName]
+				wc, draining := evaluable[lv.ServiceName]
 				if !draining || lv.Version != wc.FromVersion {
 					continue // only the *old* (draining) version's shutdown code is at risk
 				}
@@ -255,6 +285,14 @@ func evaluateTerminationConflict(plan ir.RolloutPlan, g *graph.Graph) ir.Diagnos
 	}
 
 	if len(violations) == 0 {
+		if gaps.len() > 0 {
+			return ir.Diagnostic{
+				InvariantID:     RPK8S003,
+				Verdict:         ir.VerdictUnknown,
+				Summary:         fmt.Sprintf("%s: insufficient evidence to evaluate every draining-eligible workload", RPK8S003),
+				MissingEvidence: gaps.list(),
+			}
+		}
 		return ir.Diagnostic{
 			InvariantID: RPK8S003,
 			Verdict:     ir.VerdictSafe,

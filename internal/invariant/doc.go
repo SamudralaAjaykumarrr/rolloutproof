@@ -65,10 +65,12 @@
 //     declared dependency is ready.
 //   - RP-K8S-003: a destructive migration commits while a draining
 //     replica with a PreStop hook may still run schema-dependent
-//     shutdown code (V1 scoping: approximated via the coexistence state,
-//     since internal/graph does not yet model a distinct terminating-
-//     replica-population dimension — see evaluateTerminationConflict's
-//     own doc comment).
+//     shutdown code (V1 scoping: approximated via the RollingUpdate
+//     coexistence state, since internal/graph does not yet model a
+//     distinct terminating-replica-population dimension; reports UNKNOWN
+//     rather than guessing for Recreate/unrecognized strategies, which
+//     have no reachable state distinctly representing "draining" at
+//     all — see evaluateTerminationConflict's own doc comment).
 //   - RP-K8S-004: a coarse, advisory (ir.Diagnostic.Advisory) structural
 //     check — MaxSurge/MaxUnavailable widening coexistence combined with
 //     an undeclared destructive migration during rollout — that trades

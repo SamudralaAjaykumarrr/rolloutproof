@@ -133,6 +133,42 @@ func TestRPK8S003_SafeWithoutPreStopHook(t *testing.T) {
 	}
 }
 
+// Adversarial-review regression: a Recreate-strategy workload's model has
+// no reachable state distinctly representing "old draining" — old fully
+// stops before new starts, as a single edge, not a state
+// (docs/graph's own package doc) — so a naive "old's FromVersion is
+// live" check would treat the *pre-rollout* old-only state (nothing
+// draining at all) as if it were draining, a false positive. RP-K8S-003
+// must report UNKNOWN for this workload instead of guessing either way.
+func TestRPK8S003_UnknownForRecreateStrategy(t *testing.T) {
+	w, err := ir.NewWorkload(ir.Workload{
+		Name: "api", ServiceName: "api", Version: "v2", Replicas: 3,
+		Strategy:    ir.RolloutStrategy{Type: ir.StrategyRecreate},
+		Termination: ir.TerminationSpec{HasPreStopHook: true, GracePeriodSeconds: 30},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	schema := mustSchema(t, mustTable(t, "users", []ir.Column{{Name: "email", Type: "text", Nullable: true}}))
+	plan, err := ir.NewRolloutPlan(ir.RolloutPlan{
+		BaseSchema: schema,
+		Workloads:  []ir.WorkloadChange{{Workload: w, FromVersion: "v1", ToVersion: "v2"}},
+		Migrations: []ir.MigrationTiming{{Migration: dropEmailMigration(t), Phase: ir.PhaseDuringRollout}},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	g, err := graph.Build(plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	diags := EvaluateK8s(plan, g, nil)
+	d := diagFor(diags, RPK8S003)
+	if d == nil || d.Verdict != ir.VerdictUnknown || len(d.MissingEvidence) == 0 {
+		t.Fatalf("expected RP-K8S-003 UNKNOWN (Recreate has no representable draining state) with identified missing evidence, got %+v", d)
+	}
+}
+
 // SC-UNSAFE-009: destructive migration during rollout with MaxSurge and
 // no expand/contract declaration.
 func TestRPK8S004_AdvisoryUnsafeDestructiveDuringCoexistence(t *testing.T) {
