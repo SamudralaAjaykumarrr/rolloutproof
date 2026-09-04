@@ -6,20 +6,41 @@ individually valid, but whether the **transition** between the current and
 target state is safe, including every mixed-version and partially-applied
 intermediate state a real rollout passes through.
 
-**Status: V1, partial invariant catalog.** The full pipeline — Kubernetes
-Deployment + PostgreSQL migration + service contract metadata parsers,
-the normalized IR, the reachable-state transition graph, invariant
-evaluation, structured counterexamples, rollback classification,
-deterministic text reporting, and the `rolloutproof verify` CLI — is
-implemented and exercised end to end against real fixtures in
-[`examples/`](examples/) (`internal/verify`'s and `cmd/rolloutproof`'s
-tests run the real parsers and the real graph, not hand-built IR values).
-Of the invariant catalog in [`docs/invariants.md`](docs/invariants.md),
-RP-DB-001, -002, -004, and -005 are implemented; RP-DB-003/006/007,
-RP-K8S-*, RP-API-*, RP-ORDER-*, and RP-ROLLBACK-* as a first-class
-evaluation of a plan's `RollbackTarget` remain documented but not yet
-built. See [`docs/vision.md`](docs/vision.md) for the honest scope and
-non-goals.
+**Status: cross-layer V1.** The full pipeline — Kubernetes Deployment +
+PostgreSQL migration + service/API contract metadata parsers, the
+normalized IR (including an API contract model), the reachable-state
+transition graph, a first-class rollback transition graph, invariant
+evaluation, structured counterexamples, deterministic text reporting,
+and the `rolloutproof verify` CLI — is implemented and exercised end to
+end against real fixtures in [`examples/`](examples/) (`internal/verify`'s
+and `cmd/rolloutproof`'s tests run the real parsers and the real graph,
+not hand-built IR values).
+
+Of the invariant catalog in [`docs/invariants.md`](docs/invariants.md):
+
+- **RP-DB** (schema/migration safety): RP-DB-001 through -007 are all
+  implemented, including the type-compatibility table (RP-DB-003),
+  expand/contract sequencing (RP-DB-006), and rollback preconditions
+  (RP-DB-007).
+- **RP-ROLLBACK** (rollback safety): RP-ROLLBACK-001/002/003 are
+  implemented, evaluated against a real rollback transition graph
+  (`graph.BuildRollback`), with a four-state
+  SAFE/CONDITIONALLY_SAFE/UNSAFE/UNKNOWN classification.
+- **RP-API** (API contract compatibility): RP-API-001 through -004 are
+  implemented, evaluated over reachable rollout states.
+- **RP-ORDER** (cross-service ordering): RP-ORDER-001/002 are
+  implemented.
+- **RP-K8S** (Kubernetes rollout mechanics): the four highest-value rules
+  (RP-K8S-001 through -004) are implemented; RP-K8S-001 and RP-K8S-004
+  are explicitly coarser/advisory checks, distinguished from
+  high-confidence findings via `ir.Diagnostic.Advisory` rather than
+  silently blended into the blocking verdict.
+
+No project-config subsystem (`internal/config`, docs/architecture.md §7)
+exists yet, so version-ordering (RP-ORDER) and expand/contract linking
+(RP-DB-006) use self-contained, honestly-scoped fallbacks documented in
+code rather than a full project-wide policy layer. See
+[`docs/vision.md`](docs/vision.md) for the honest scope and non-goals.
 
 ## The core idea
 
