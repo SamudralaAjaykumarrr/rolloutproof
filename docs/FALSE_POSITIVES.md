@@ -82,6 +82,13 @@ including migrations RP-DB-003 separately proves are a safe widening —
 this over-firing is intentional (recall over precision, per its own
 documentation), not a bug to silence.
 
+**RP-ORDER-003** is the migration-timing-side counterpart to RP-K8S-004
+(same rationale, same `ir.Diagnostic.Advisory = true` treatment): it
+fires on any `PhaseDuringRollout` destructive migration with no declared
+expand/contract sequencing, regardless of the workload's own strategy —
+so it over-fires in the same cases RP-K8S-004 does, by design, and the
+two are expected to co-occur on the same plan.
+
 **RP-K8S-001** currently fires only by *deriving* from another
 invariant's already-confirmed finding (see `internal/invariant`'s
 `EvaluateK8s` doc comment) — it has no independent capability to declare

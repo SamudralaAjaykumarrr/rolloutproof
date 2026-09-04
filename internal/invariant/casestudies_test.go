@@ -144,7 +144,7 @@ func TestCaseStudy_B_ReadinessRaceAndProviderContractChange(t *testing.T) {
 	var diags []ir.Diagnostic
 	diags = append(diags, Evaluate(plan, g, services)...)
 	diags = append(diags, EvaluateAPI(g, services, contracts)...)
-	diags = append(diags, EvaluateOrder(g, services)...)
+	diags = append(diags, EvaluateOrder(plan, g, services)...)
 	diags = append(diags, EvaluateK8s(plan, g, diags)...)
 
 	if overall := Aggregate(diags); overall != ir.VerdictUnsafe {

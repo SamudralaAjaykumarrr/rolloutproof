@@ -34,7 +34,7 @@ func TestCompareVersions(t *testing.T) {
 // checkoutPaymentsGraph is a two-workload plan: payments is the
 // "changing" workload (v2 -> v4), checkout is static at whatever version
 // the test supplies.
-func checkoutPaymentsGraph(t *testing.T, checkoutVersion string) *graph.Graph {
+func checkoutPaymentsGraph(t *testing.T, checkoutVersion string) (ir.RolloutPlan, *graph.Graph) {
 	t.Helper()
 	payments, err := ir.NewWorkload(ir.Workload{
 		Name: "payments", ServiceName: "payments", Version: "v4", Replicas: 3,
@@ -64,7 +64,7 @@ func checkoutPaymentsGraph(t *testing.T, checkoutVersion string) *graph.Graph {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	return g
+	return plan, g
 }
 
 // SC-UNSAFE-011-shaped: checkout is only compatible with payments up to
@@ -74,7 +74,7 @@ func checkoutPaymentsGraph(t *testing.T, checkoutVersion string) *graph.Graph {
 // payments >= v3, but payments' reachable live versions during this
 // rollout include v2 (the starting point) before reaching v4.
 func TestRPORDER_UnsafeConsumerLiveBeforeProviderSupport(t *testing.T) {
-	g := checkoutPaymentsGraph(t, "v1")
+	plan, g := checkoutPaymentsGraph(t, "v1")
 	checkout, err := ir.NewServiceWithAPI("checkout", "v1", nil, nil,
 		[]ir.ServiceDependency{{ServiceName: "payments", MinCompatibleVersion: "v3"}}, nil, nil)
 	if err != nil {
@@ -85,7 +85,7 @@ func TestRPORDER_UnsafeConsumerLiveBeforeProviderSupport(t *testing.T) {
 		{Name: "payments", Version: "v2"}: mustService(t, "payments", "v2", nil, nil),
 		{Name: "payments", Version: "v4"}: mustService(t, "payments", "v4", nil, nil),
 	}
-	diags := EvaluateOrder(g, services)
+	diags := EvaluateOrder(plan, g, services)
 	d := diagFor(diags, RPORDER001)
 	if d == nil || d.Verdict != ir.VerdictUnsafe {
 		t.Fatalf("expected RP-ORDER-001 UNSAFE, got %+v", d)
@@ -100,7 +100,7 @@ func TestRPORDER_UnsafeConsumerLiveBeforeProviderSupport(t *testing.T) {
 }
 
 func TestRPORDER_SafeWhenAlreadyCompatible(t *testing.T) {
-	g := checkoutPaymentsGraph(t, "v1")
+	plan, g := checkoutPaymentsGraph(t, "v1")
 	checkout, err := ir.NewServiceWithAPI("checkout", "v1", nil, nil,
 		[]ir.ServiceDependency{{ServiceName: "payments", MinCompatibleVersion: "v2"}}, nil, nil)
 	if err != nil {
@@ -111,7 +111,7 @@ func TestRPORDER_SafeWhenAlreadyCompatible(t *testing.T) {
 		{Name: "payments", Version: "v2"}: mustService(t, "payments", "v2", nil, nil),
 		{Name: "payments", Version: "v4"}: mustService(t, "payments", "v4", nil, nil),
 	}
-	diags := EvaluateOrder(g, services)
+	diags := EvaluateOrder(plan, g, services)
 	if got := Aggregate(diags); got != ir.VerdictSafe {
 		t.Fatalf("expected SAFE, got %v (%+v)", got, diags)
 	}
@@ -120,7 +120,7 @@ func TestRPORDER_SafeWhenAlreadyCompatible(t *testing.T) {
 // SC-UNKNOWN-002: opaque-unordered version scheme makes comparison
 // impossible.
 func TestRPORDER_UnknownForIncomparableVersions(t *testing.T) {
-	g := checkoutPaymentsGraph(t, "v1")
+	plan, g := checkoutPaymentsGraph(t, "v1")
 	checkout, err := ir.NewServiceWithAPI("checkout", "v1", nil, nil,
 		[]ir.ServiceDependency{{ServiceName: "payments", MinCompatibleVersion: "build-8841"}}, nil, nil)
 	if err != nil {
@@ -131,7 +131,7 @@ func TestRPORDER_UnknownForIncomparableVersions(t *testing.T) {
 		{Name: "payments", Version: "v2"}: mustService(t, "payments", "v2", nil, nil),
 		{Name: "payments", Version: "v4"}: mustService(t, "payments", "v4", nil, nil),
 	}
-	diags := EvaluateOrder(g, services)
+	diags := EvaluateOrder(plan, g, services)
 	d := diagFor(diags, RPORDER001)
 	if d == nil || d.Verdict != ir.VerdictUnknown || len(d.MissingEvidence) == 0 {
 		t.Fatalf("expected RP-ORDER-001 UNKNOWN with identified missing evidence, got %+v", d)
@@ -139,13 +139,13 @@ func TestRPORDER_UnknownForIncomparableVersions(t *testing.T) {
 }
 
 func TestRPORDER_NotApplicableWithoutDeclaredDependency(t *testing.T) {
-	g := checkoutPaymentsGraph(t, "v1")
+	plan, g := checkoutPaymentsGraph(t, "v1")
 	services := map[ir.ServiceKey]ir.Service{
 		{Name: "checkout", Version: "v1"}: mustService(t, "checkout", "v1", nil, nil),
 		{Name: "payments", Version: "v2"}: mustService(t, "payments", "v2", nil, nil),
 		{Name: "payments", Version: "v4"}: mustService(t, "payments", "v4", nil, nil),
 	}
-	diags := EvaluateOrder(g, services)
+	diags := EvaluateOrder(plan, g, services)
 	if got := Aggregate(diags); got != ir.VerdictSafe {
 		t.Fatalf("expected SAFE (not applicable), got %v (%+v)", got, diags)
 	}

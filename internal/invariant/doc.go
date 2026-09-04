@@ -52,6 +52,11 @@
 //     compareVersions is V1's self-contained version-ordering fallback,
 //     since no internal/config package exists yet to declare
 //     docs/architecture.md §2.1.1's project-wide version scheme).
+//   - RP-ORDER-003: a coarse, advisory (ir.Diagnostic.Advisory) structural
+//     check — the ordering-family counterpart to RP-K8S-004, phrased from
+//     the migration-timing side: any PhaseDuringRollout destructive
+//     migration with no declared expand/contract sequencing, regardless
+//     of the workload's own strategy.
 //
 // The RP-K8S family's highest-value rules (rpk8s.go) are evaluated via
 // EvaluateK8s:

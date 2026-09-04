@@ -124,7 +124,7 @@ simulated.
 $ rolloutproof verify examples/safe/additive-column
 ROLLOUT: SAFE
 
-20 invariant(s) evaluated: 20 safe, 0 unsafe, 0 unknown
+21 invariant(s) evaluated: 21 safe, 0 unsafe, 0 unknown
 $ echo $?
 0
 ```
@@ -139,7 +139,7 @@ way (`examples/safe/additive-column`).
 $ rolloutproof verify examples/unsafe/drop-column-before-drain
 ROLLOUT: UNSAFE
 
-20 invariant(s) evaluated: 18 safe, 2 unsafe, 0 unknown
+21 invariant(s) evaluated: 18 safe, 3 unsafe, 0 unknown
 
 ------------------------------------------------------------
 RP-DB-001  UNSAFE
@@ -170,7 +170,7 @@ Recommended sequence:
 3. verify no live version still declares a dependency on users.email
 4. apply migration "migrations/017_drop_email.sql"
 
-[RP-K8S-004 advisory finding omitted here — see full output below]
+[RP-ORDER-003 and RP-K8S-004 advisory findings omitted here — see full output below]
 $ echo $?
 1
 ```
@@ -189,7 +189,7 @@ finding, not a weaker one (`docs/invariants.md` RP-DB-001).
 $ rolloutproof verify examples/unknown/missing-service-metadata
 ROLLOUT: UNKNOWN
 
-20 invariant(s) evaluated: 17 safe, 1 unsafe, 2 unknown
+21 invariant(s) evaluated: 17 safe, 2 unsafe, 2 unknown
 
 ------------------------------------------------------------
 RP-DB-001  UNKNOWN
@@ -220,7 +220,7 @@ schema, rollback, and Kubernetes-mechanics layers in one verification:
 $ rolloutproof verify examples/unsafe/rollback-after-irreversible-drop
 ROLLOUT: UNSAFE
 
-20 invariant(s) evaluated: 13 safe, 7 unsafe, 0 unknown
+21 invariant(s) evaluated: 13 safe, 8 unsafe, 0 unknown
 
 ------------------------------------------------------------
 RP-DB-001  UNSAFE
@@ -250,7 +250,7 @@ RP-K8S-001  UNSAFE
 the rollout strategy permits a version pair to coexist that RP-ROLLBACK-002
 independently found incompatible
 
-[RP-K8S-004 advisory finding also present — abbreviated here]
+[RP-ORDER-003 and RP-K8S-004 advisory findings also present — abbreviated here]
 $ echo $?
 1
 ```
@@ -267,7 +267,7 @@ for the same result structured for a script instead of a terminal.
 | RP-DB | 001–007 | Column existence, type compatibility, NOT NULL introduction, renames, expand/contract sequencing, rollback preconditions |
 | RP-ROLLBACK | 001–003 | Rollback safety against a real second transition graph, four-state SAFE/CONDITIONALLY_SAFE/UNSAFE/UNKNOWN |
 | RP-API | 001–004 | Provider/consumer API contract compatibility (endpoints, request/response fields) over reachable states |
-| RP-ORDER | 001–002 | Cross-service dependency version ordering |
+| RP-ORDER | 001–003 | Cross-service dependency version ordering, plus a coarse/advisory migration-phase structural check |
 | RP-K8S | 001–004 | Readiness-before-dependency, termination/drain conflicts, coarse/advisory structural checks (visibly marked, never blended into the blocking verdict) |
 
 See `docs/invariants.md` for the full catalog with algorithms and

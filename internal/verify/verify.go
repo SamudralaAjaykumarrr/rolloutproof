@@ -43,7 +43,7 @@ func Run(dir string) ([]ir.Diagnostic, error) {
 	diags := invariant.Evaluate(plan, g, services)
 	diags = append(diags, invariant.EvaluateRollbackPlan(plan, g, services)...)
 	diags = append(diags, invariant.EvaluateAPI(g, services, contracts)...)
-	diags = append(diags, invariant.EvaluateOrder(g, services)...)
+	diags = append(diags, invariant.EvaluateOrder(plan, g, services)...)
 	// EvaluateK8s runs last: RP-K8S-001 derives its finding from every
 	// other family's results (see EvaluateK8s's doc comment).
 	diags = append(diags, invariant.EvaluateK8s(plan, g, diags)...)

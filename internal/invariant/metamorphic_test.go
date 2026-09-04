@@ -62,8 +62,8 @@ func TestMetamorphic_RemovingDependencyNeverIntroducesOrderHazard(t *testing.T) 
 	servicesWithDep := map[ir.ServiceKey]ir.Service{withDep.Key(): withDep, backSvc.Key(): backSvc}
 	servicesWithoutDep := map[ir.ServiceKey]ir.Service{withoutDep.Key(): withoutDep, backSvc.Key(): backSvc}
 
-	withDiags := EvaluateOrder(g, servicesWithDep)
-	withoutDiags := EvaluateOrder(g, servicesWithoutDep)
+	withDiags := EvaluateOrder(plan, g, servicesWithDep)
+	withoutDiags := EvaluateOrder(plan, g, servicesWithoutDep)
 
 	withVerdict := diagFor(withDiags, RPORDER001).Verdict
 	withoutVerdict := diagFor(withoutDiags, RPORDER001).Verdict

@@ -99,12 +99,12 @@ func mustBenchService(b *testing.B, name, version string, reads, writes []ir.Col
 // declared dependencies on a single live consumer.
 func BenchmarkEvaluateOrder_ServiceDependencies(b *testing.B) {
 	for _, n := range []int{1, 10, 50} {
-		_, g := benchFlagshipGraph(b)
+		plan, g := benchFlagshipGraph(b)
 		services := benchServices(b, n)
 		b.Run(fmt.Sprintf("deps=%d", n), func(b *testing.B) {
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				EvaluateOrder(g, services)
+				EvaluateOrder(plan, g, services)
 			}
 		})
 	}

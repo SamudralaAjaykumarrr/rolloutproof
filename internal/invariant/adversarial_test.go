@@ -278,7 +278,7 @@ func runFullPipeline(plan ir.RolloutPlan, services map[ir.ServiceKey]ir.Service,
 	diags := Evaluate(plan, g, services)
 	diags = append(diags, EvaluateRollbackPlan(plan, g, services)...)
 	diags = append(diags, EvaluateAPI(g, services, contracts)...)
-	diags = append(diags, EvaluateOrder(g, services)...)
+	diags = append(diags, EvaluateOrder(plan, g, services)...)
 	diags = append(diags, EvaluateK8s(plan, g, diags)...)
 	return g, diags, Aggregate(diags), nil
 }

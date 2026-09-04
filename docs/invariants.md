@@ -686,6 +686,16 @@ plan, which is intentional (each names a different aspect of the same
 underlying risk for diagnostic clarity, per architecture.md's principle
 that diagnostics should be specific rather than generic).
 
+**Implementation note.** As with RP-K8S-004, path (b) (project-config
+acknowledgment) is unavailable in V1 (`docs/architecture.md` §7's
+`internal/config` does not exist yet) — only path (a) is checked. Because
+this invariant fires on the phase/destructiveness pattern alone
+(unlike RP-K8S-004, it does not additionally require the workload's
+strategy to widen the coexistence window), it is at least as
+over-inclusive and is marked `ir.Diagnostic.Advisory = true` for the same
+reason: it must not, by itself, veto the overall verdict alongside the
+higher-precision RP-DB family. See `docs/FALSE_POSITIVES.md`.
+
 ## RP-ROLLBACK — Rollback Safety
 
 ### RP-ROLLBACK-001 — Target rollout can fail after an irreversible migration

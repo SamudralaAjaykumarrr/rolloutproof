@@ -26,10 +26,15 @@ instead of a version number.
   a provider/consumer contract model (`internal/ir` `APIContract`/
   `Endpoint`/`Shape`/`Field`), evaluated over every reachable rollout
   state rather than a static contract diff.
-- **RP-ORDER family** (RP-ORDER-001/002): cross-service dependency
-  version-ordering checks, with a self-contained dotted-numeric version
-  comparator that honestly reports `UNKNOWN` for opaque/unordered
-  version schemes.
+- **RP-ORDER family** (RP-ORDER-001 through RP-ORDER-003): cross-service
+  dependency version-ordering checks, with a self-contained
+  dotted-numeric version comparator that honestly reports `UNKNOWN` for
+  opaque/unordered version schemes, plus RP-ORDER-003 — the
+  migration-timing-side counterpart to RP-K8S-004, closing the one
+  catalog ID `docs/invariants.md` documented but that had no
+  implementation — an advisory structural check for a destructive
+  migration phased during rollout with no declared expand/contract
+  sequencing, independent of the workload's own strategy.
 - **RP-K8S family's highest-value rules** (RP-K8S-001 through
   RP-K8S-004): readiness-before-dependency, termination/drain conflict
   detection, an advisory structural check for destructive migrations

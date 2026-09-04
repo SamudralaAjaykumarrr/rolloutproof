@@ -22,6 +22,20 @@ const RPORDER001 = "RP-ORDER-001"
 // for RP-DB-001/002 (docs/invariants.md RP-DB-005's own justification).
 const RPORDER002 = "RP-ORDER-002"
 
+// RPORDER003 is the invariant ID for "database mutation occurs at unsafe
+// rollout phase" (docs/invariants.md) — the ordering-family counterpart
+// to RP-K8S-004 (rpk8s.go), phrased from the migration-timing side rather
+// than the rollout-parameters side: it fires on any PhaseDuringRollout
+// destructive migration with no declared expand/contract sequencing,
+// regardless of whether the workload's own strategy widens the
+// coexistence window. Like RP-K8S-004, it is a coarse, advisory
+// (ir.Diagnostic.Advisory) structural check that trades precision for
+// recall and does not by itself veto the overall verdict — docs describe
+// the two IDs as independently evaluated and expected to co-fire on the
+// same underlying plan, each naming a different aspect of the same risk
+// for diagnostic clarity.
+const RPORDER003 = "RP-ORDER-003"
+
 type orderViolation struct {
 	stateID     int
 	consumerLV  ir.LiveVersion
@@ -38,9 +52,11 @@ type orderViolation struct {
 // of which side's WorkloadChange produced the state, since docs describe
 // RP-ORDER-002 as exactly RP-ORDER-001 evaluated from the other
 // direction.
-func EvaluateOrder(g *graph.Graph, services map[ir.ServiceKey]ir.Service) []ir.Diagnostic {
+func EvaluateOrder(plan ir.RolloutPlan, g *graph.Graph, services map[ir.ServiceKey]ir.Service) []ir.Diagnostic {
+	phaseOrdering := evaluateMigrationPhaseOrdering(plan)
+
 	if !anyDependencyDeclared(services) {
-		return []ir.Diagnostic{notApplicableOrder(RPORDER001), notApplicableOrder(RPORDER002)}
+		return []ir.Diagnostic{notApplicableOrder(RPORDER001), notApplicableOrder(RPORDER002), phaseOrdering}
 	}
 
 	var violations []orderViolation
@@ -95,7 +111,58 @@ func EvaluateOrder(g *graph.Graph, services map[ir.ServiceKey]ir.Service) []ir.D
 
 	rporder001 := buildOrderDiagnostic(RPORDER001, g, violations, gaps)
 	rporder002 := buildOrderDiagnostic(RPORDER002, g, violations, gaps)
-	return []ir.Diagnostic{rporder001, rporder002}
+	return []ir.Diagnostic{rporder001, rporder002, phaseOrdering}
+}
+
+// evaluateMigrationPhaseOrdering implements RP-ORDER-003
+// (docs/invariants.md): a PhaseDuringRollout migration with a
+// Destructive/ConditionallyDestructive operation, not covered by a
+// declared expand/contract link, is flagged regardless of the workload's
+// strategy — see RPORDER003's doc comment for how this differs from
+// RP-K8S-004.
+func evaluateMigrationPhaseOrdering(plan ir.RolloutPlan) ir.Diagnostic {
+	covered := make(map[string]bool, len(plan.ExpandContractLinks))
+	for _, link := range plan.ExpandContractLinks {
+		covered[link.ContractMigrationID] = true
+	}
+
+	for _, mt := range plan.Migrations {
+		if mt.Phase != ir.PhaseDuringRollout {
+			continue
+		}
+		if covered[mt.Migration.ID] {
+			continue
+		}
+		for _, op := range mt.Migration.Operations {
+			if op.Destructiveness != ir.Destructive && op.Destructiveness != ir.ConditionallyDestructive {
+				continue
+			}
+			return ir.Diagnostic{
+				InvariantID: RPORDER003,
+				Verdict:     ir.VerdictUnsafe,
+				Advisory:    true,
+				Summary: fmt.Sprintf(
+					"%s: migration %q commits a %s change during rollout with no declared expand/contract sequencing and no project-config acknowledgment (advisory — does not block the overall verdict; see docs/invariants.md RP-ORDER-003)",
+					RPORDER003, mt.Migration.ID, op.Destructiveness),
+				Evidence: []ir.Evidence{
+					{Kind: ir.EvidenceMigrationOp, Artifact: mt.Migration.ID, Description: fmt.Sprintf("%s operation on %s.%s, phase during rollout", op.Kind, op.Table, op.Column)},
+				},
+				Counterexample: &ir.Counterexample{
+					Outcome: "a destructive schema mutation is timed to commit while the rollout is still in progress, independent of whether any specific reader/writer conflict is separately confirmed",
+					RecommendedSequence: []string{
+						"declare an explicit expand/contract relationship (RP-DB-006) if this is an intentional expand/contract step",
+						"or move this migration to phase \"after\" so it commits only once the rollout completes",
+					},
+				},
+			}
+		}
+	}
+
+	return ir.Diagnostic{
+		InvariantID: RPORDER003,
+		Verdict:     ir.VerdictSafe,
+		Summary:     fmt.Sprintf("%s: no undeclared destructive migration is phased during rollout", RPORDER003),
+	}
 }
 
 func anyDependencyDeclared(services map[ir.ServiceKey]ir.Service) bool {
