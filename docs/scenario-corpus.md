@@ -251,6 +251,48 @@ a rollback plan targeting `batch-worker:v1` after this migration would be
 UNSAFE per RP-ROLLBACK-002 — noted here as the natural next scenario,
 not evaluated in this one.
 
+**Superseded by implementation evidence — this scenario's SAFE prediction
+does not hold, and no fixture is provided for it.** This entry predates
+assumption A2 (§3.3) being taken to its logical conclusion during
+implementation: "regardless of `Phase`" is not actually true for
+`Phase: during` (`PhaseDuringRollout`). A2 says a `PhaseDuringRollout`
+migration's commit point is reachable at *any* point in the workload's
+own progression, including the old-only step *before* `Recreate` has
+begun tearing down the old replicas — a state that exists for `Recreate`
+exactly as it does for `RollingUpdate` (§3.2 step 2's own sequence,
+`{old} → {} → {new}`, starts at `{old}`). `Recreate` eliminates the
+`{old, new}` **coexistence** node, but the hazard this scenario names
+does not require coexistence: a live version whose declared schema
+access no longer matches the committed schema is unsafe whether or not
+a second version happens to be live alongside it (`invariants.md`
+RP-DB-001's own note on SC-UNSAFE-001, and the passing regression test
+`internal/invariant.TestRPDB001_RecreateChangesReachabilityNotThisVerdict`,
+which asserts this exact persistence and is treated as the authoritative
+resolution). Verified empirically against the real engine while
+completing the scenario corpus for open-source readiness: constructing
+this scenario's artifacts exactly as described and running
+`rolloutproof verify` against them produces **UNSAFE**
+(RP-DB-001), citing precisely the A2 timing-ambiguity path, not a
+coexistence path.
+
+The property this scenario actually intended to demonstrate —
+`Recreate` removing a hazard that is *specifically* coexistence-dependent
+— does hold, and is demonstrated with a fixture for a family that has
+no A2-style phase-timing backdoor: RP-K8S-002 readiness-before-dependency
+checks depend only on which versions are live, never on an
+independently-timed migration commit. There is currently no
+schema/migration-shaped scenario in this corpus that is safe under
+`RollingUpdate` and would become unsafe if switched to it purely by
+losing coexistence, without also being reachable via A2 — RP-DB-001's
+own general existence-check mechanism (`rpdb.go`) makes that
+combination structurally impossible for `PhaseDuringRollout` migrations.
+A migration phased `before` or `after` has no A2 ambiguity to begin
+with, so switching *its* workload to `Recreate` changes nothing to
+demonstrate either. This is a documented model-shape gap, not a defect:
+closing it would require a migration phase with commit-timing tied to a
+specific pod-lifecycle event (finer than V1's three-phase model), which
+is out of scope here rather than silently faked.
+
 ## UNSAFE scenarios
 
 ### SC-UNSAFE-001 — Flagship: drop column before old replicas drain

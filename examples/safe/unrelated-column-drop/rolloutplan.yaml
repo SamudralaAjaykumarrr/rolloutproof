@@ -1,0 +1,13 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+
+# SC-SAFE-005: drops an already-unused column. api's contract enumerates
+# users columns it touches, and legacy_flag is not among them — a
+# closed-world absence, not a missing declaration.
+workload: api
+fromVersion: v1
+toVersion: v2
+
+migrations:
+  - file: migrations/014_drop_legacy_flag.sql
+    phase: during

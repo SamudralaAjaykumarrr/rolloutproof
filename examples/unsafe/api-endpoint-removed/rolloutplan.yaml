@@ -1,0 +1,9 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+
+workload: orders
+fromVersion: v1
+toVersion: v2
+
+staticWorkloads:
+  - checkout

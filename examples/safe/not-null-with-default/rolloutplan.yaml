@@ -1,0 +1,12 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+
+# SC-SAFE-009: a DEFAULT satisfies old writers automatically — Postgres
+# supplies the value on any INSERT that omits the column.
+workload: api
+fromVersion: v1
+toVersion: v2
+
+migrations:
+  - file: migrations/025_require_status.sql
+    phase: during

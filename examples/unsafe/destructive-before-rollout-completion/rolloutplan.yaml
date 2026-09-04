@@ -1,0 +1,17 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+
+# SC-UNSAFE-009: a widened coexistence window (MaxSurge: 2) combined with
+# an undeclared, Destructive, PhaseDuringRollout migration — the
+# structural pattern RP-K8S-004 exists to catch as defense-in-depth,
+# deliberately constructed (per docs/scenario-corpus.md) so it fires even
+# before checking specific reader/writer overlap. api@v1's contract also
+# independently declares the dependency, so RP-DB-001/002 confirm the
+# same hazard with full evidence.
+workload: api
+fromVersion: v1
+toVersion: v2
+
+migrations:
+  - file: migrations/050_drop_inventory_count.sql
+    phase: during

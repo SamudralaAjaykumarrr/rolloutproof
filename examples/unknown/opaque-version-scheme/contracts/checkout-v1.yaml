@@ -1,0 +1,9 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: ServiceContract
+
+service: checkout
+version: v1
+
+dependencies:
+  - service: payments
+    minCompatibleVersion: build-8841

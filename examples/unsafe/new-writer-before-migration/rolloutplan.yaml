@@ -1,0 +1,13 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+
+# SC-UNSAFE-005: api@v2 writes users.loyalty_tier, a column scheduled to
+# be added only after the rollout completes — the write-side symmetric
+# counterpart of SC-UNSAFE-004 (examples/unsafe/new-reader-before-migration).
+workload: api
+fromVersion: v1
+toVersion: v2
+
+migrations:
+  - file: migrations/041_add_loyalty_tier.sql
+    phase: after

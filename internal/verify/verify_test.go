@@ -137,6 +137,115 @@ func TestRun_UnsafeDropColumnBeforeDrain(t *testing.T) {
 	}
 }
 
+// --- scenario corpus completion: remaining representable scenarios ---
+
+func TestRun_SC_SAFE_004_NoSchemaChange(t *testing.T) {
+	diags, err := Run(exampleDir(t, "safe/no-schema-change"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictSafe {
+		t.Fatalf("expected SAFE, got %v (%+v)", got, diags)
+	}
+}
+
+func TestRun_SC_SAFE_005_UnrelatedColumnDrop(t *testing.T) {
+	diags, err := Run(exampleDir(t, "safe/unrelated-column-drop"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictSafe {
+		t.Fatalf("expected SAFE, got %v (%+v)", got, diags)
+	}
+}
+
+func TestRun_SC_SAFE_006_MigrationAfterFullDrain(t *testing.T) {
+	diags, err := Run(exampleDir(t, "safe/migration-after-full-drain"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictSafe {
+		t.Fatalf("expected SAFE, got %v (%+v)", got, diags)
+	}
+}
+
+func TestRun_SC_SAFE_009_NotNullWithDefault(t *testing.T) {
+	diags, err := Run(exampleDir(t, "safe/not-null-with-default"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictSafe {
+		t.Fatalf("expected SAFE, got %v (%+v)", got, diags)
+	}
+}
+
+// SC-UNSAFE-005: the write-side symmetric counterpart of SC-UNSAFE-004.
+func TestRun_SC_UNSAFE_005_NewWriterBeforeMigration(t *testing.T) {
+	diags, err := Run(exampleDir(t, "unsafe/new-writer-before-migration"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictUnsafe {
+		t.Fatalf("expected UNSAFE, got %v (%+v)", got, diags)
+	}
+	d := diagFor(diags, invariant.RPDB002)
+	if d == nil || d.Verdict != ir.VerdictUnsafe {
+		t.Fatalf("expected RP-DB-002 UNSAFE, got %+v", d)
+	}
+}
+
+func TestRun_SC_UNSAFE_007_APIEndpointRemoved(t *testing.T) {
+	diags, err := Run(exampleDir(t, "unsafe/api-endpoint-removed"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictUnsafe {
+		t.Fatalf("expected UNSAFE, got %v (%+v)", got, diags)
+	}
+	d := diagFor(diags, invariant.RPAPI001)
+	if d == nil || d.Verdict != ir.VerdictUnsafe {
+		t.Fatalf("expected RP-API-001 UNSAFE, got %+v", d)
+	}
+}
+
+// SC-UNSAFE-009: a widened coexistence window (MaxSurge: 2) combined with
+// an undeclared destructive migration during rollout. Contract metadata
+// here is complete, so RP-DB-001 independently confirms the hazard
+// alongside RP-K8S-004's structural (advisory) finding.
+func TestRun_SC_UNSAFE_009_DestructiveBeforeRolloutCompletion(t *testing.T) {
+	diags, err := Run(exampleDir(t, "unsafe/destructive-before-rollout-completion"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictUnsafe {
+		t.Fatalf("expected UNSAFE, got %v (%+v)", got, diags)
+	}
+	rpdb001 := diagFor(diags, invariant.RPDB001)
+	if rpdb001 == nil || rpdb001.Verdict != ir.VerdictUnsafe {
+		t.Fatalf("expected RP-DB-001 UNSAFE, got %+v", rpdb001)
+	}
+	rpk8s004 := diagFor(diags, invariant.RPK8S004)
+	if rpk8s004 == nil || rpk8s004.Verdict != ir.VerdictUnsafe || !rpk8s004.Advisory {
+		t.Fatalf("expected RP-K8S-004 UNSAFE and Advisory, got %+v", rpk8s004)
+	}
+}
+
+// SC-UNKNOWN-002: an opaque, unordered version scheme (build-tag
+// versions) makes RP-ORDER-001/002 unable to compare versions at all.
+func TestRun_SC_UNKNOWN_002_OpaqueVersionScheme(t *testing.T) {
+	diags, err := Run(exampleDir(t, "unknown/opaque-version-scheme"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictUnknown {
+		t.Fatalf("expected UNKNOWN, got %v (%+v)", got, diags)
+	}
+	d := diagFor(diags, invariant.RPORDER001)
+	if d == nil || d.Verdict != ir.VerdictUnknown || len(d.MissingEvidence) == 0 {
+		t.Fatalf("expected RP-ORDER-001 UNKNOWN with identified missing evidence, got %+v", d)
+	}
+}
+
 // SC-UNSAFE-004: a new reader depends on a column scheduled to be added
 // only after the rollout completes — the existence-check mechanism
 // (evaluateColumnExistence) firing on a column that was never added yet,

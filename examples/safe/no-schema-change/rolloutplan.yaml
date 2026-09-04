@@ -1,0 +1,9 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+
+# SC-SAFE-004: a pure application version bump, no migration and no
+# contract change in scope. Every RP-DB precondition is vacuously
+# unsatisfied (docs/scenario-corpus.md).
+workload: api
+fromVersion: v1
+toVersion: v2

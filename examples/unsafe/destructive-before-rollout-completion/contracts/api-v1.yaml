@@ -1,0 +1,9 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: ServiceContract
+
+service: api
+version: v1
+
+schema:
+  reads:
+    - inventory.inventory_count

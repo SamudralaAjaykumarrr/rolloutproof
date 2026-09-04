@@ -1,0 +1,16 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+
+# SC-UNKNOWN-002: payments upgrades from image tag build-8841 to
+# build-9012 — an opaque, unordered version scheme (docs/architecture.md
+# §2.1.1). checkout's declared MinCompatibleVersion cannot be compared
+# against a non-dotted-numeric tag under RolloutProof's fallback version
+# scheme (internal/invariant's compareVersions), so RP-ORDER-001/002
+# cannot determine compatibility and must report UNKNOWN rather than
+# guess an order.
+workload: payments
+fromVersion: build-8841
+toVersion: build-9012
+
+staticWorkloads:
+  - checkout

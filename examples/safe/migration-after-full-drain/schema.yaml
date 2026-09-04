@@ -1,0 +1,11 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: Schema
+tables:
+  - name: users
+    columns:
+      - name: id
+        type: integer
+        default: "nextval('id_seq'::regclass)"
+      - name: ssn
+        type: text
+        nullable: true

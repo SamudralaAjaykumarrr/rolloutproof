@@ -1,0 +1,15 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+
+# SC-SAFE-006: api@v1 reads users.ssn; api@v2 does not. The migration
+# dropping ssn is phased strictly after rollout completion, so it is
+# only ever evaluated against the fully-rolled-out api@v2-only state
+# (docs/architecture.md §3.2 step 3) — api@v1 is never live at the same
+# time the column is gone.
+workload: api
+fromVersion: v1
+toVersion: v2
+
+migrations:
+  - file: migrations/020_drop_ssn.sql
+    phase: after
