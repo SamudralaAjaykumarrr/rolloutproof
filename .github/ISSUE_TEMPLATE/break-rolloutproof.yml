@@ -1,0 +1,149 @@
+name: "Break RolloutProof"
+description: >-
+  Report a rollout where RolloutProof's verdict does not match what you
+  believe actually happens — a false SAFE, false UNSAFE, or false
+  UNKNOWN. Read docs/ADVERSARIAL_REVIEW.md first for how to challenge a
+  verdict before assuming it's a bug.
+title: "[break] "
+labels:
+  - "adversarial-finding"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying to break RolloutProof. Before filing:
+        read `docs/ADVERSARIAL_REVIEW.md`'s "How to challenge a verdict"
+        section — a lot of surprising verdicts turn out to be correct
+        given a documented scope boundary or assumption in
+        `docs/invariants.md` / `docs/FALSE_POSITIVES.md`, not a bug.
+        The smallest reproduction you can manage is the most useful
+        thing you can include.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: What kind of defect is this?
+      description: >-
+        False SAFE (the verdict is SAFE but a real hazard exists) is the
+        most serious category — RolloutProof's one non-negotiable rule
+        is that missing evidence must never read as SAFE.
+      options:
+        - "False SAFE — verdict is SAFE but a hazard exists"
+        - "False UNSAFE — verdict is UNSAFE but nothing is actually wrong"
+        - "False UNKNOWN — verdict is UNKNOWN but sufficient evidence was actually present"
+        - "Incomplete/misleading counterexample or diagnostic"
+        - "Wrong rollback classification"
+        - "State-space omission (a reachable state is missing) or an impossible state is generated"
+        - "Parser ambiguity or crash"
+        - "Nondeterminism (same input, different output across runs)"
+        - "Other"
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected real-world behavior
+      description: >-
+        In plain terms: what actually happens (or would happen) if this
+        rollout ran for real, and why.
+      placeholder: >-
+        e.g. "The old replica keeps serving GET /orders for up to 30s
+        after the migration drops orders.legacy_id, because
+        terminationGracePeriodSeconds is 30 and there's no PreStop hook
+        — so it will 500 on any request touching that column during
+        that window."
+    validations:
+      required: true
+
+  - type: textarea
+    id: artifacts
+    attributes:
+      label: Artifacts
+      description: >-
+        The smallest input that reproduces this. Prefer one of the two
+        forms docs/ADVERSARIAL_REVIEW.md's "Minimal reproduction format"
+        describes: a trimmed examples/-style directory (paste the
+        relevant files inline, or link a branch/gist), or a Go test
+        constructing the plan via ir.* constructors directly (see
+        internal/invariant/casestudies_test.go for the pattern).
+      placeholder: |
+        deployment.yaml:
+        ```yaml
+        ...
+        ```
+        schema.yaml:
+        ```yaml
+        ...
+        ```
+        rolloutplan.yaml:
+        ```yaml
+        ...
+        ```
+        migrations/001_*.sql:
+        ```sql
+        ...
+        ```
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: ordering
+    attributes:
+      label: Rollout ordering
+      description: >-
+        The exact sequence of events you believe is reachable (or, for a
+        false UNSAFE/UNKNOWN report, the sequence you believe RolloutProof
+        wrongly considers reachable or wrongly can't rule out) — phase of
+        each migration relative to workload progression, and which
+        service versions are live at each step.
+      placeholder: |
+        1. api@v1 (2 replicas) serving, schema has orders.legacy_id
+        2. rollout begins: 1 api@v2 replica starts (maxSurge: 1) while
+           both api@v1 replicas remain live
+        3. migration 001_drop_legacy_id.sql commits (phase: during)
+        4. api@v1 replicas are still live and still reading legacy_id
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_verdict
+    attributes:
+      label: Actual RolloutProof verdict
+      description: >-
+        The exact command you ran and its exact output (paste, don't
+        summarize) — `rolloutproof verify <dir>` (or `--format json`) is
+        preferred since it's the most complete record.
+      placeholder: |
+        $ rolloutproof verify ./my-scenario
+        ROLLOUT: SAFE
+
+        20 invariant(s) evaluated: 20 safe, 0 unsafe, 0 unknown
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: why_wrong
+    attributes:
+      label: Why you believe this verdict is wrong
+      description: >-
+        Connect the dots explicitly: which declared fact(s) in your
+        artifacts entail the hazard (or entail its absence, for a false
+        UNSAFE/UNKNOWN report), and which invariant(s) you'd expect to
+        catch it. If you can express this as the oracle-style check
+        internal/invariant/adversarial_test.go uses ("for this reachable
+        state, this live version's declared X doesn't match committed
+        fact Y"), include it — that's the strongest possible report.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: RolloutProof version
+      description: Output of `rolloutproof version`.
+      placeholder: "rolloutproof v0.1.0 (commit abc1234, built 2026-01-01T00:00:00Z)"
+    validations:
+      required: true
