@@ -49,14 +49,25 @@ type rollbackEntry struct {
 	ToVersion string `yaml:"toVersion"`
 }
 
+// expandContractEntry declares an explicit expand/contract relationship
+// between two migration files in this same plan (docs/invariants.md
+// RP-DB-006) — see ir.ExpandContractLink. File values are matched
+// verbatim against migrationEntry.File, the same string used to build
+// each Migration's ID.
+type expandContractEntry struct {
+	Expand   string `yaml:"expand"`
+	Contract string `yaml:"contract"`
+}
+
 type planDoc struct {
-	APIVersion  string           `yaml:"apiVersion"`
-	Kind        string           `yaml:"kind"`
-	Workload    string           `yaml:"workload"`
-	FromVersion string           `yaml:"fromVersion"`
-	ToVersion   string           `yaml:"toVersion"`
-	Migrations  []migrationEntry `yaml:"migrations"`
-	Rollback    *rollbackEntry   `yaml:"rollback"`
+	APIVersion     string                `yaml:"apiVersion"`
+	Kind           string                `yaml:"kind"`
+	Workload       string                `yaml:"workload"`
+	FromVersion    string                `yaml:"fromVersion"`
+	ToVersion      string                `yaml:"toVersion"`
+	Migrations     []migrationEntry      `yaml:"migrations"`
+	Rollback       *rollbackEntry        `yaml:"rollback"`
+	ExpandContract []expandContractEntry `yaml:"expandContract"`
 }
 
 func parsePhase(filename, s string) (ir.MigrationPhase, error) {
@@ -154,11 +165,20 @@ func LoadDir(dir string) (ir.RolloutPlan, error) {
 		rollbackTarget = &ir.RollbackTarget{Workload: *workload, ToVersion: doc.Rollback.ToVersion}
 	}
 
+	links := make([]ir.ExpandContractLink, 0, len(doc.ExpandContract))
+	for _, ece := range doc.ExpandContract {
+		if ece.Expand == "" || ece.Contract == "" {
+			return ir.RolloutPlan{}, &ParseError{File: planPath, Message: "expandContract entry: both \"expand\" and \"contract\" are required"}
+		}
+		links = append(links, ir.ExpandContractLink{ExpandMigrationID: ece.Expand, ContractMigrationID: ece.Contract})
+	}
+
 	plan, err := ir.NewRolloutPlan(ir.RolloutPlan{
-		BaseSchema:     baseSchema,
-		Workloads:      []ir.WorkloadChange{{Workload: *workload, FromVersion: doc.FromVersion, ToVersion: doc.ToVersion}},
-		Migrations:     migrationTimings,
-		RollbackTarget: rollbackTarget,
+		BaseSchema:          baseSchema,
+		Workloads:           []ir.WorkloadChange{{Workload: *workload, FromVersion: doc.FromVersion, ToVersion: doc.ToVersion}},
+		Migrations:          migrationTimings,
+		RollbackTarget:      rollbackTarget,
+		ExpandContractLinks: links,
 	})
 	if err != nil {
 		return ir.RolloutPlan{}, fmt.Errorf("rolloutplan: %w", err)

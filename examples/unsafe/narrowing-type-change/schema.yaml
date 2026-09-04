@@ -5,5 +5,6 @@ tables:
     columns:
       - name: id
         type: integer
+        default: "nextval('id_seq'::regclass)"
       - name: user_id
         type: bigint

@@ -146,6 +146,88 @@ func TestRun_UnsafeNotNullWithoutDefault(t *testing.T) {
 	}
 }
 
+func TestRun_SafeExpandContractSequenced(t *testing.T) {
+	diags, err := Run(exampleDir(t, "safe/expand-contract-sequenced"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictSafe {
+		t.Fatalf("expected SAFE, got %v (%+v)", got, diags)
+	}
+	d := diagFor(diags, invariant.RPDB006)
+	if d == nil || d.Verdict != ir.VerdictSafe {
+		t.Fatalf("expected RP-DB-006 SAFE, got %+v", d)
+	}
+}
+
+func TestRun_UnsafeExpandContractSameRollout(t *testing.T) {
+	diags, err := Run(exampleDir(t, "unsafe/expand-contract-same-rollout"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictUnsafe {
+		t.Fatalf("expected UNSAFE, got %v (%+v)", got, diags)
+	}
+	d := diagFor(diags, invariant.RPDB006)
+	if d == nil || d.Verdict != ir.VerdictUnsafe {
+		t.Fatalf("expected RP-DB-006 UNSAFE, got %+v", d)
+	}
+}
+
+// --- rollback: safe + unsafe + unknown ---
+
+func TestRun_SafeRollbackAfterAdditiveOnly(t *testing.T) {
+	diags, err := Run(exampleDir(t, "safe/rollback-after-additive-only"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictSafe {
+		t.Fatalf("expected SAFE, got %v (%+v)", got, diags)
+	}
+	aggregate := diagFor(diags, invariant.RPROLLBACK003)
+	if aggregate == nil || aggregate.RollbackVerdict != ir.RollbackSafe {
+		t.Fatalf("expected RollbackVerdict SAFE, got %+v", aggregate)
+	}
+}
+
+// SC-UNSAFE-010: rollback requested after an irreversible migration has
+// committed.
+func TestRun_UnsafeRollbackAfterIrreversibleDrop(t *testing.T) {
+	diags, err := Run(exampleDir(t, "unsafe/rollback-after-irreversible-drop"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictUnsafe {
+		t.Fatalf("expected UNSAFE, got %v (%+v)", got, diags)
+	}
+	rprb001 := diagFor(diags, invariant.RPROLLBACK001)
+	if rprb001 == nil || rprb001.Verdict != ir.VerdictUnsafe {
+		t.Fatalf("expected RP-ROLLBACK-001 UNSAFE, got %+v", rprb001)
+	}
+	aggregate := diagFor(diags, invariant.RPROLLBACK003)
+	if aggregate == nil || aggregate.RollbackVerdict != ir.RollbackUnsafe {
+		t.Fatalf("expected RollbackVerdict UNSAFE, got %+v", aggregate)
+	}
+}
+
+func TestRun_UnknownRollbackTargetContractMissing(t *testing.T) {
+	diags, err := Run(exampleDir(t, "unknown/rollback-target-contract-missing"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictUnknown {
+		t.Fatalf("expected UNKNOWN, got %v (%+v)", got, diags)
+	}
+	rpdb007 := diagFor(diags, invariant.RPDB007)
+	if rpdb007 == nil || rpdb007.Verdict != ir.VerdictUnknown || len(rpdb007.MissingEvidence) == 0 {
+		t.Fatalf("expected RP-DB-007 UNKNOWN with identified missing evidence, got %+v", rpdb007)
+	}
+	aggregate := diagFor(diags, invariant.RPROLLBACK003)
+	if aggregate == nil || aggregate.RollbackVerdict != ir.RollbackUnknown {
+		t.Fatalf("expected RollbackVerdict UNKNOWN, got %+v", aggregate)
+	}
+}
+
 // --- semantic mutation proof ---
 //
 // Both tests below start from the same real, on-disk UNSAFE fixture and
@@ -223,6 +305,27 @@ func TestRun_MutationRemovingDependencyFlipsToSafe(t *testing.T) {
 	}
 	if got := invariant.Aggregate(diags); got != ir.VerdictSafe {
 		t.Fatalf("expected SAFE once the dependency is removed, got %v (%+v)", got, diags)
+	}
+}
+
+// Adding a declared rollback dependency on a column that has already
+// been irreversibly dropped must flip a plan from a rollback-SAFE
+// verdict to a rollback-UNSAFE one — proving RollbackVerdict tracks
+// declared facts, not the fixture's identity.
+func TestRun_MutationAddingRollbackDependencyOnDroppedColumnFlipsToUnsafe(t *testing.T) {
+	dir := t.TempDir()
+	copyDir(t, exampleDir(t, "unsafe/drop-column-before-drain"), dir)
+	replaceInFile(t, filepath.Join(dir, "rolloutplan.yaml"),
+		"    phase: during\n",
+		"    phase: during\n\nrollback:\n  toVersion: v1\n")
+
+	diags, err := Run(dir)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	aggregate := diagFor(diags, invariant.RPROLLBACK003)
+	if aggregate == nil || aggregate.RollbackVerdict != ir.RollbackUnsafe {
+		t.Fatalf("expected RollbackVerdict UNSAFE once a rollback to a version depending on the dropped column is declared, got %+v", aggregate)
 	}
 }
 

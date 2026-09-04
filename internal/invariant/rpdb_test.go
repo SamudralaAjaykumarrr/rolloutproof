@@ -48,7 +48,7 @@ func dropEmailMigration(t *testing.T) ir.Migration {
 	return m
 }
 
-func flagshipGraph(t *testing.T) *graph.Graph {
+func flagshipGraph(t *testing.T) (ir.RolloutPlan, *graph.Graph) {
 	t.Helper()
 	schema := mustSchema(t, mustTable(t, "users", []ir.Column{
 		{Name: "id", Type: "integer"},
@@ -66,7 +66,7 @@ func flagshipGraph(t *testing.T) *graph.Graph {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	return g
+	return plan, g
 }
 
 func diagFor(diags []ir.Diagnostic, id string) *ir.Diagnostic {
@@ -90,13 +90,13 @@ func mustService(t *testing.T, name, version string, reads, writes []ir.ColumnRe
 // This is the flagship scenario: it must be DERIVED from the graph and
 // service facts below, not hard-coded to any scenario name.
 func TestRPDB001_FlagshipUnsafe(t *testing.T) {
-	g := flagshipGraph(t)
+	plan, g := flagshipGraph(t)
 	services := map[ir.ServiceKey]ir.Service{
 		{Name: "api", Version: "v1"}: mustService(t, "api", "v1", []ir.ColumnRef{{Table: "users", Column: "email"}}, nil),
 		{Name: "api", Version: "v2"}: mustService(t, "api", "v2", nil, nil),
 	}
 
-	diags := Evaluate(g, services)
+	diags := Evaluate(plan, g, services)
 	var rpdb001 *ir.Diagnostic
 	for i := range diags {
 		if diags[i].InvariantID == RPDB001 {
@@ -145,12 +145,12 @@ func TestRPDB001_FlagshipUnsafe(t *testing.T) {
 // SAFE — proving the result is reasoned from facts, not scenario identity
 // (the acceptance-demonstration mutation test, section 19 of the run).
 func TestRPDB001_SafeWhenDependencyRemoved(t *testing.T) {
-	g := flagshipGraph(t)
+	plan, g := flagshipGraph(t)
 	services := map[ir.ServiceKey]ir.Service{
 		{Name: "api", Version: "v1"}: mustService(t, "api", "v1", []ir.ColumnRef{{Table: "users", Column: "id"}}, nil),
 		{Name: "api", Version: "v2"}: mustService(t, "api", "v2", nil, nil),
 	}
-	diags := Evaluate(g, services)
+	diags := Evaluate(plan, g, services)
 	for _, d := range diags {
 		if d.Verdict == ir.VerdictUnsafe {
 			t.Fatalf("expected no UNSAFE diagnostics once the dependency is removed, got %+v", d)
@@ -159,12 +159,12 @@ func TestRPDB001_SafeWhenDependencyRemoved(t *testing.T) {
 }
 
 func TestRPDB002_WriterFlagshipUnsafe(t *testing.T) {
-	g := flagshipGraph(t)
+	plan, g := flagshipGraph(t)
 	services := map[ir.ServiceKey]ir.Service{
 		{Name: "api", Version: "v1"}: mustService(t, "api", "v1", nil, []ir.ColumnRef{{Table: "users", Column: "email"}}),
 		{Name: "api", Version: "v2"}: mustService(t, "api", "v2", nil, nil),
 	}
-	diags := Evaluate(g, services)
+	diags := Evaluate(plan, g, services)
 	var rpdb002 *ir.Diagnostic
 	for i := range diags {
 		if diags[i].InvariantID == RPDB002 {
@@ -186,12 +186,12 @@ func isDropColumnInvariant(id string) bool {
 }
 
 func TestRPDB001_UnknownWhenContractMissing(t *testing.T) {
-	g := flagshipGraph(t)
+	plan, g := flagshipGraph(t)
 	services := map[ir.ServiceKey]ir.Service{
 		// api@v1 has no entry at all.
 		{Name: "api", Version: "v2"}: mustService(t, "api", "v2", nil, nil),
 	}
-	diags := Evaluate(g, services)
+	diags := Evaluate(plan, g, services)
 	for _, d := range diags {
 		if !isDropColumnInvariant(d.InvariantID) {
 			continue
@@ -205,19 +205,26 @@ func TestRPDB001_UnknownWhenContractMissing(t *testing.T) {
 	}
 }
 
-func TestRPDB001_UnknownWhenTableNotMentioned(t *testing.T) {
-	g := flagshipGraph(t)
+// A contract file that exists but declares empty SchemaReads/SchemaWrites
+// is a positive, closed-world "this version touches nothing" fact
+// (docs/adr/0004), not an evidence gap — evaluateColumnExistence has
+// nothing to check for a version with no declared columns at all, so
+// this must report SAFE, not UNKNOWN. (A version whose contract file is
+// missing entirely is the genuine gap; see
+// TestRPDB001_UnknownWhenContractMissing.)
+func TestRPDB001_SafeWhenContractDeclaresNoColumnsAtAll(t *testing.T) {
+	plan, g := flagshipGraph(t)
 	services := map[ir.ServiceKey]ir.Service{
-		{Name: "api", Version: "v1"}: mustService(t, "api", "v1", nil, nil), // never mentions "users" at all
+		{Name: "api", Version: "v1"}: mustService(t, "api", "v1", nil, nil),
 		{Name: "api", Version: "v2"}: mustService(t, "api", "v2", nil, nil),
 	}
-	diags := Evaluate(g, services)
+	diags := Evaluate(plan, g, services)
 	for _, d := range diags {
 		if !isDropColumnInvariant(d.InvariantID) {
 			continue
 		}
-		if d.Verdict != ir.VerdictUnknown {
-			t.Fatalf("expected UNKNOWN when contract metadata never mentions the affected table, got %v", d.Verdict)
+		if d.Verdict != ir.VerdictSafe {
+			t.Fatalf("expected SAFE when contract metadata declares no columns at all, got %v (%+v)", d.Verdict, d)
 		}
 	}
 }
@@ -235,7 +242,7 @@ func TestRPDB001_SafeWhenNoMigrationDropsAnything(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	diags := Evaluate(g, map[ir.ServiceKey]ir.Service{})
+	diags := Evaluate(plan, g, map[ir.ServiceKey]ir.Service{})
 	if Aggregate(diags) != ir.VerdictSafe {
 		t.Fatalf("expected overall SAFE when there is no destructive migration, got %v (%+v)", Aggregate(diags), diags)
 	}
@@ -286,7 +293,7 @@ func TestRPDB001_RecreateChangesReachabilityNotThisVerdict(t *testing.T) {
 		{Name: "api", Version: "v1"}: mustService(t, "api", "v1", []ir.ColumnRef{{Table: "users", Column: "email"}}, nil),
 		{Name: "api", Version: "v2"}: mustService(t, "api", "v2", nil, nil),
 	}
-	diags := Evaluate(g, services)
+	diags := Evaluate(plan, g, services)
 	if Aggregate(diags) != ir.VerdictUnsafe {
 		t.Fatalf("expected UNSAFE to persist under Recreate, since the hazard does not depend on coexistence: %+v", diags)
 	}
@@ -309,13 +316,13 @@ func TestAggregate_DominanceOrder(t *testing.T) {
 }
 
 func TestEvaluate_Deterministic(t *testing.T) {
-	g := flagshipGraph(t)
+	plan, g := flagshipGraph(t)
 	services := map[ir.ServiceKey]ir.Service{
 		{Name: "api", Version: "v1"}: mustService(t, "api", "v1", []ir.ColumnRef{{Table: "users", Column: "email"}}, nil),
 		{Name: "api", Version: "v2"}: mustService(t, "api", "v2", nil, nil),
 	}
-	a := Evaluate(g, services)
-	b := Evaluate(g, services)
+	a := Evaluate(plan, g, services)
+	b := Evaluate(plan, g, services)
 	if len(a) != len(b) {
 		t.Fatalf("nondeterministic diagnostic count")
 	}

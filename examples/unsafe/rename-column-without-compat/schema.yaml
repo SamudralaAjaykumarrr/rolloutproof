@@ -5,6 +5,7 @@ tables:
     columns:
       - name: id
         type: integer
+        default: "nextval('id_seq'::regclass)"
       - name: email
         type: text
         nullable: true

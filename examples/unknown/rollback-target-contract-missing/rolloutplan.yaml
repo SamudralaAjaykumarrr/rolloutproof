@@ -1,0 +1,16 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+
+workload: api
+fromVersion: v1
+toVersion: v2
+
+migrations:
+  - file: migrations/017_drop_email.sql
+    phase: during
+
+# api@v1 (the rollback target) has no contract file at all — RolloutProof
+# cannot determine whether restoring it against the current (migrated)
+# schema is safe, and must report UNKNOWN rather than guessing.
+rollback:
+  toVersion: v1

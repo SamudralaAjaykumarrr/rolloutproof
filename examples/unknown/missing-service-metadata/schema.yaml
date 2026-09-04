@@ -5,6 +5,7 @@ tables:
     columns:
       - name: id
         type: integer
+        default: "nextval('id_seq'::regclass)"
       - name: referral_code
         type: text
         nullable: true

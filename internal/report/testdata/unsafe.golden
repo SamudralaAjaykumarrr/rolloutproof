@@ -1,14 +1,14 @@
 ROLLOUT: UNSAFE
 
-5 invariant(s) evaluated: 3 safe, 1 unsafe, 1 unknown
+6 invariant(s) evaluated: 5 safe, 1 unsafe, 0 unknown
 
 ------------------------------------------------------------
 RP-DB-001  UNSAFE
 
-migration "017_drop_email.sql" drops users.email while api@v1 still reads it, and the migration's declared phase does not rule out committing before api@v1 is replaced
+api@v1 still reads users.email, which does not exist in the schema committed in this reachable state (migration "017_drop_email.sql" drops users.email)
 
 Evidence:
-- 017_drop_email.sql: migration drops users.email
+- 017_drop_email.sql: migration "017_drop_email.sql" drops users.email
 - contracts/api-v1.yaml: api@v1 declares it reads users.email
 - the migration's declared phase does not order its commit relative to {api@v1} becoming live, so this state is reachable even without version coexistence
 
@@ -23,11 +23,3 @@ Recommended sequence:
 2. wait for the compatibility release to complete its rollout
 3. verify no live version still declares a dependency on users.email
 4. apply migration "017_drop_email.sql"
-
-------------------------------------------------------------
-RP-DB-002  UNKNOWN
-
-RP-DB-002: insufficient evidence to evaluate every reachable state
-
-Missing evidence:
-- Service api@v2 schema access on table users: contract metadata for this service version does not mention this table

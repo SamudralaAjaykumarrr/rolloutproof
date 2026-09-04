@@ -78,8 +78,9 @@ func TestRenderText_Unsafe_Golden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	idDefault := "nextval('id_seq'::regclass)"
 	schema := mustSchema(t, mustTable(t, "users", []ir.Column{
-		{Name: "id", Type: "integer"},
+		{Name: "id", Type: "integer", Default: &idDefault},
 		{Name: "email", Type: "text", Nullable: true},
 	}))
 	plan, err := ir.NewRolloutPlan(ir.RolloutPlan{
@@ -98,7 +99,7 @@ func TestRenderText_Unsafe_Golden(t *testing.T) {
 		{Name: "api", Version: "v1"}: mustService(t, "api", "v1", []ir.ColumnRef{{Table: "users", Column: "email"}}, nil),
 		{Name: "api", Version: "v2"}: mustService(t, "api", "v2", nil, nil),
 	}
-	diags := invariant.Evaluate(g, services)
+	diags := invariant.Evaluate(plan, g, services)
 	checkGolden(t, "unsafe", RenderText(diags))
 }
 
@@ -115,7 +116,7 @@ func TestRenderText_Safe_Golden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	diags := invariant.Evaluate(g, map[ir.ServiceKey]ir.Service{})
+	diags := invariant.Evaluate(plan, g, map[ir.ServiceKey]ir.Service{})
 	checkGolden(t, "safe", RenderText(diags))
 }
 
@@ -142,7 +143,7 @@ func TestRenderText_Unknown_Golden(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	// No contract metadata at all for api@v1 or api@v2.
-	diags := invariant.Evaluate(g, map[ir.ServiceKey]ir.Service{})
+	diags := invariant.Evaluate(plan, g, map[ir.ServiceKey]ir.Service{})
 	checkGolden(t, "unknown", RenderText(diags))
 }
 
@@ -159,13 +160,13 @@ func TestSummary_Deterministic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	diags := invariant.Evaluate(g, map[ir.ServiceKey]ir.Service{})
+	diags := invariant.Evaluate(plan, g, map[ir.ServiceKey]ir.Service{})
 	a := Summary(diags)
 	b := Summary(diags)
 	if a != b {
 		t.Fatalf("Summary must be deterministic: %q vs %q", a, b)
 	}
-	if a != "SAFE — 5 invariant(s) evaluated, 0 violated, 0 unknown" {
+	if a != "SAFE — 6 invariant(s) evaluated, 0 violated, 0 unknown" {
 		t.Fatalf("unexpected summary: %q", a)
 	}
 }

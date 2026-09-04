@@ -32,11 +32,16 @@ func TestRun_ExitCodes(t *testing.T) {
 	}{
 		{"safe", "safe/additive-column", exitSafe},
 		{"safe widening type change", "safe/widening-type-change", exitSafe},
+		{"safe expand/contract sequenced", "safe/expand-contract-sequenced", exitSafe},
+		{"safe rollback after additive-only", "safe/rollback-after-additive-only", exitSafe},
 		{"unsafe drop column", "unsafe/drop-column-before-drain", exitUnsafe},
 		{"unsafe rename", "unsafe/rename-column-without-compat", exitUnsafe},
 		{"unsafe not null", "unsafe/not-null-without-default", exitUnsafe},
 		{"unsafe narrowing type change", "unsafe/narrowing-type-change", exitUnsafe},
+		{"unsafe expand/contract same rollout", "unsafe/expand-contract-same-rollout", exitUnsafe},
+		{"unsafe rollback after irreversible drop", "unsafe/rollback-after-irreversible-drop", exitUnsafe},
 		{"unknown missing metadata", "unknown/missing-service-metadata", exitUnknown},
+		{"unknown rollback target contract missing", "unknown/rollback-target-contract-missing", exitUnknown},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

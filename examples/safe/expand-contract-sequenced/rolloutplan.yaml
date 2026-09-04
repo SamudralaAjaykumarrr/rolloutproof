@@ -1,0 +1,16 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+
+workload: api
+fromVersion: v1
+toVersion: v2
+
+migrations:
+  - file: migrations/001_add_email_address.sql
+    phase: before
+  - file: migrations/002_drop_email.sql
+    phase: after
+
+expandContract:
+  - expand: migrations/001_add_email_address.sql
+    contract: migrations/002_drop_email.sql

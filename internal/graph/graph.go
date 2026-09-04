@@ -326,6 +326,55 @@ func Build(plan ir.RolloutPlan) (*Graph, error) {
 	return g, nil
 }
 
+// BuildRollback constructs the RolloutPlan and transition graph for an
+// *operational* rollback of forward's declared RollbackTarget
+// (docs/architecture.md §5): reverting the workload from forward's
+// ToVersion back to RollbackTarget.ToVersion, starting from whatever
+// schema forwardGraph's own target node ends up committing — no
+// migration reversal is included (RP-ROLLBACK-002's default scope,
+// docs/invariants.md: "RP-ROLLBACK invariants check operational rollback
+// against current schema state by default"). A migration rollback is a
+// distinct, not-yet-modeled action; see docs/architecture.md §5's
+// "migration rollback vs. operational rollback".
+//
+// V1 scoping: like the rest of the graph builder, this supports exactly
+// one workload change per plan, matching internal/parser/rolloutplan's
+// single-workload directory convention — forward must have exactly one
+// WorkloadChange.
+//
+// Returns an error if forward.RollbackTarget is nil; callers evaluating
+// rollback safety must check that first (docs/architecture.md §2.6:
+// RollbackTarget == nil means "no rollback under evaluation," which is
+// not this function's concern to detect silently).
+func BuildRollback(forward ir.RolloutPlan, forwardGraph *Graph) (ir.RolloutPlan, *Graph, error) {
+	if forward.RollbackTarget == nil {
+		return ir.RolloutPlan{}, nil, fmt.Errorf("graph: BuildRollback: forward plan declares no RollbackTarget")
+	}
+	if len(forward.Workloads) != 1 {
+		return ir.RolloutPlan{}, nil, fmt.Errorf("graph: BuildRollback: V1 supports exactly one workload change per plan, got %d", len(forward.Workloads))
+	}
+	fwd := forward.Workloads[0]
+	targetState := forwardGraph.State(forwardGraph.Target)
+
+	change := ir.WorkloadChange{
+		Workload:    forward.RollbackTarget.Workload,
+		FromVersion: fwd.ToVersion,
+		ToVersion:   forward.RollbackTarget.ToVersion,
+	}
+	rbPlan, err := ir.NewRolloutPlan(ir.RolloutPlan{
+		BaseSchema: targetState.SchemaState.Schema,
+		Workloads:  []ir.WorkloadChange{change},
+	})
+	if err != nil {
+		return ir.RolloutPlan{}, nil, fmt.Errorf("graph: BuildRollback: %w", err)
+	}
+	rbGraph, err := Build(rbPlan)
+	if err != nil {
+		return ir.RolloutPlan{}, nil, fmt.Errorf("graph: BuildRollback: %w", err)
+	}
+	return rbPlan, rbGraph, nil
+}
+
 func cloneLive(live []ir.LiveVersion) []ir.LiveVersion {
 	return append([]ir.LiveVersion(nil), live...)
 }

@@ -1,0 +1,17 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+
+workload: api
+fromVersion: v1
+toVersion: v2
+
+migrations:
+  - file: migrations/017_drop_email.sql
+    phase: during
+
+# SC-UNSAFE-010 (docs/scenario-corpus.md): a rollback requested after an
+# irreversible migration has committed. api@v1 (the rollback target)
+# still declares it reads users.email, which 017_drop_email.sql has
+# irreversibly dropped by the time this rollback would run.
+rollback:
+  toVersion: v1

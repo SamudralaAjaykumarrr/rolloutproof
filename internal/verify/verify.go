@@ -40,7 +40,9 @@ func Run(dir string) ([]ir.Diagnostic, error) {
 		return nil, err
 	}
 
-	return invariant.Evaluate(g, services), nil
+	diags := invariant.Evaluate(plan, g, services)
+	diags = append(diags, invariant.EvaluateRollbackPlan(plan, g, services)...)
+	return diags, nil
 }
 
 // loadServices loads contract metadata from <dir>/contracts, if that

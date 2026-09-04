@@ -17,21 +17,42 @@ const RPDB001 = "RP-DB-001"
 // writers remain" (docs/invariants.md).
 const RPDB002 = "RP-DB-002"
 
-// Evaluate runs every invariant V1 implements against g, using services
-// as the (service, version) -> declared-facts lookup
-// (docs/architecture.md §6's EvidenceGap mechanism fires whenever a live
-// version has no entry here). It always returns exactly one Diagnostic
-// per implemented invariant, in a fixed order, regardless of verdict —
-// callers that only care about non-SAFE results filter afterward; the
-// full list is what lets a report say "N invariants evaluated, 0
-// violated."
-func Evaluate(g *graph.Graph, services map[ir.ServiceKey]ir.Service) []ir.Diagnostic {
+// Evaluate runs every column-compatibility invariant V1 implements
+// (the RP-DB family below RP-DB-006/007) against g, using services as
+// the (service, version) -> declared-facts lookup (docs/architecture.md
+// §6's EvidenceGap mechanism fires whenever a live version has no entry
+// here). plan is needed only by RP-DB-006, which reasons about declared
+// expand/contract relationships rather than reachable states — see
+// EvaluateRollback (rollback_plan.go) for RP-DB-007 and the RP-ROLLBACK
+// family, which additionally need plan.RollbackTarget and are evaluated
+// separately since they build their own transition graph.
+//
+// Evaluate always returns exactly one Diagnostic per implemented
+// invariant, in a fixed order, regardless of verdict — callers that only
+// care about non-SAFE results filter afterward; the full list is what
+// lets a report say "N invariants evaluated, 0 violated."
+func Evaluate(plan ir.RolloutPlan, g *graph.Graph, services map[ir.ServiceKey]ir.Service) []ir.Diagnostic {
+	return evaluateColumnFamily(plan, g, services, true)
+}
+
+// evaluateColumnFamily is Evaluate's implementation, parameterized by
+// vacuousWhenNoOp so rollback_plan.go's evaluateOldVersionAgainstCurrentSchema
+// can re-run the same RP-DB checks against a rollback's own graph without
+// docs/scenario-corpus.md SC-SAFE-004's "no migration in this plan is
+// vacuously SAFE" rule suppressing them — a rollback plan legitimately
+// commits no migrations of its own (RP-ROLLBACK-002's operational-only
+// scope, docs/architecture.md §5) while still needing every check to run
+// against whatever schema the forward plan already left behind. See
+// evaluateColumnExistence and evaluateNotNullIntroduction's own doc
+// comments for why each needs this distinction.
+func evaluateColumnFamily(plan ir.RolloutPlan, g *graph.Graph, services map[ir.ServiceKey]ir.Service, vacuousWhenNoOp bool) []ir.Diagnostic {
 	return []ir.Diagnostic{
-		evaluateDestructiveColumnRemoval(RPDB001, g, services, ir.Service.ReadsColumn, ir.EvidenceSchemaRead, "reads"),
-		evaluateDestructiveColumnRemoval(RPDB002, g, services, ir.Service.WritesColumn, ir.EvidenceSchemaWrite, "writes"),
+		evaluateColumnExistence(RPDB001, g, services, ir.Service.SchemaReads, ir.EvidenceSchemaRead, "reads", vacuousWhenNoOp),
+		evaluateColumnExistence(RPDB002, g, services, ir.Service.SchemaWrites, ir.EvidenceSchemaWrite, "writes", vacuousWhenNoOp),
 		evaluateTypeCompatibility(g, services),
-		evaluateNotNullIntroduction(g, services),
+		evaluateNotNullIntroduction(g, services, vacuousWhenNoOp),
 		evaluateRenameWithoutCompatibility(g, services),
+		evaluateExpandContractSequence(plan, g),
 	}
 }
 
@@ -46,33 +67,73 @@ func Aggregate(diags []ir.Diagnostic) ir.Verdict {
 	return v
 }
 
-type columnFact func(ir.Service, ir.ColumnRef) bool
-
-// violation is one (state, committed drop op, live version) triple whose
+// violation is one (state, affected column, live version) triple whose
 // facts satisfy an invariant's UNSAFE precondition.
+//
+// RP-DB-003/004 (rpdb003.go, rpdb004.go) always have a single concrete
+// causing op and populate op directly. RP-DB-001/002
+// (evaluateColumnExistence, below) instead populate col directly and
+// removingOp only when a specific op is responsible — nil means col was
+// never present in the plan's schema timeline at all (the
+// SC-UNSAFE-004/005 case: a version depending on a column no migration in
+// this plan has added yet, so there is no "op" to cite).
 type violation struct {
 	stateID     int
 	op          ir.CommittedOp
+	col         ir.ColumnRef
+	removingOp  *ir.CommittedOp
 	svcVersion  ir.LiveVersion
 	svc         ir.Service
 	liveInState []ir.LiveVersion
 }
 
-// evaluateDestructiveColumnRemoval implements the shared mechanism behind
-// RP-DB-001 and RP-DB-002 (docs/invariants.md): both ask "does a live
-// version's declared column fact (reads, or writes) overlap a column a
-// committed migration in this reachable state has dropped." They differ
-// only in which ir.Service accessor and Evidence kind they use — encoded
-// here as parameters rather than duplicated logic, so a defect fixed in
-// one cannot silently persist in the other.
-func evaluateDestructiveColumnRemoval(
+// evaluateColumnExistence implements the shared mechanism behind RP-DB-001
+// and RP-DB-002 (docs/invariants.md): a live version's declared
+// SchemaReads (or SchemaWrites) entry must exist in the schema actually
+// committed at every reachable state where that version is live — not
+// merely "must not be later dropped." This is the general existence
+// check docs/scenario-corpus.md SC-UNSAFE-004/005 describe as "RP-DB-001's
+// underlying existence-check mechanism, applied symmetrically" to a
+// column that was never added, not only one that was removed; a dropped
+// column is simply the special case where HasColumn was true earlier and
+// becomes false partway through the timeline.
+//
+// A column absent because of an OpRenameColumn is deliberately excluded
+// here and left to RP-DB-005 alone (docs/invariants.md RP-DB-005: "a
+// rename-caused failure should read as 'RP-DB-005: rename' not
+// 'RP-DB-001: drop'... sharing one tested code path" — the code path
+// shared is Reversibility/counterexample-selection machinery, not this
+// function itself reporting the same finding twice under two IDs).
+//
+// If vacuousWhenNoOp is true and the plan commits no migration operations
+// anywhere in the graph, this invariant reports SAFE outright without
+// consulting services at all — docs/scenario-corpus.md SC-SAFE-004: "No
+// Migration present at all — every RP-DB precondition is vacuously
+// unsatisfied." A rollout that changes no schema is out of RP-DB-001/002's
+// scope regardless of whether contract metadata happens to be available,
+// the same "not applicable" treatment RP-DB-006 gives an undeclared
+// expand/contract relationship. vacuousWhenNoOp is false only when
+// re-evaluating a rollback's own graph (evaluateColumnFamily), whose
+// BaseSchema already reflects whatever the forward plan committed even
+// though the rollback graph itself commits nothing further — see
+// evaluateColumnFamily's doc comment.
+func evaluateColumnExistence(
 	invariantID string,
 	g *graph.Graph,
 	services map[ir.ServiceKey]ir.Service,
-	fact columnFact,
+	columnsOf func(ir.Service) []ir.ColumnRef,
 	evidenceKind ir.EvidenceKind,
 	factLabel string,
+	vacuousWhenNoOp bool,
 ) ir.Diagnostic {
+	if vacuousWhenNoOp && !graphHasAnyCommittedOp(g) {
+		return ir.Diagnostic{
+			InvariantID: invariantID,
+			Verdict:     ir.VerdictSafe,
+			Summary:     fmt.Sprintf("%s: not applicable (this plan commits no migration)", invariantID),
+		}
+	}
+
 	var violations []violation
 	gaps := newGapSet()
 
@@ -91,31 +152,29 @@ func evaluateDestructiveColumnRemoval(
 			})
 			continue
 		}
-		for _, cop := range s.SchemaState.CommittedOps {
-			if cop.Op.Kind != ir.OpDropColumn {
+		for _, lv := range s.Live {
+			key := ir.ServiceKey{Name: lv.ServiceName, Version: lv.Version}
+			svc, ok := services[key]
+			if !ok {
+				gaps.add(ir.EvidenceGap{
+					Field:  fmt.Sprintf("Service %s@%s", lv.ServiceName, lv.Version),
+					Reason: "no contract metadata file found for this service version",
+				})
 				continue
 			}
-			target := cop.Op.TargetColumn()
-			for _, lv := range s.Live {
-				key := ir.ServiceKey{Name: lv.ServiceName, Version: lv.Version}
-				svc, ok := services[key]
-				if !ok {
-					gaps.add(ir.EvidenceGap{
-						Field:  fmt.Sprintf("Service %s@%s", lv.ServiceName, lv.Version),
-						Reason: "no contract metadata file found for this service version",
-					})
+			for _, col := range columnsOf(svc) {
+				if s.SchemaState.Schema.HasColumn(col) {
 					continue
 				}
-				if !svc.TouchesTable(target.Table) {
-					gaps.add(ir.EvidenceGap{
-						Field:  fmt.Sprintf("Service %s@%s schema access on table %s", lv.ServiceName, lv.Version, target.Table),
-						Reason: "contract metadata for this service version does not mention this table",
-					})
-					continue
+				removingOp, found := findRemovingOp(s.SchemaState.CommittedOps, col)
+				if found && removingOp.Op.Kind == ir.OpRenameColumn {
+					continue // RP-DB-005's exclusive territory
 				}
-				if fact(svc, target) {
-					violations = append(violations, violation{stateID: s.ID, op: cop, svcVersion: lv, svc: svc, liveInState: s.Live})
+				var opPtr *ir.CommittedOp
+				if found {
+					opPtr = &removingOp
 				}
+				violations = append(violations, violation{stateID: s.ID, col: col, removingOp: opPtr, svcVersion: lv, svc: svc, liveInState: s.Live})
 			}
 		}
 	}
@@ -138,26 +197,32 @@ func evaluateDestructiveColumnRemoval(
 
 	best := selectShortest(g, violations)
 	path := g.ShortestPath(best.stateID)
-	target := best.op.Op.TargetColumn()
+	target := best.col
+
+	var causeText, migID string
+	if best.removingOp != nil {
+		causeText = fmt.Sprintf("migration %q drops %s", best.removingOp.MigrationID, target)
+		migID = best.removingOp.MigrationID
+	} else {
+		causeText = fmt.Sprintf("%s has not been added by any migration in this plan", target)
+	}
 
 	var summary string
 	if len(best.liveInState) > 1 {
 		summary = fmt.Sprintf(
-			"migration %q drops %s while %s@%s still %s it, and the two may coexist during the rollout",
-			best.op.MigrationID, target, best.svcVersion.ServiceName, best.svcVersion.Version, factLabel)
+			"%s@%s still %s %s, which does not exist in the schema committed in this reachable state (%s), and the two may coexist during the rollout",
+			best.svcVersion.ServiceName, best.svcVersion.Version, factLabel, target, causeText)
 	} else {
 		summary = fmt.Sprintf(
-			"migration %q drops %s while %s@%s still %s it, and the migration's declared phase does not rule out committing before %s@%s is replaced",
-			best.op.MigrationID, target, best.svcVersion.ServiceName, best.svcVersion.Version, factLabel, best.svcVersion.ServiceName, best.svcVersion.Version)
+			"%s@%s still %s %s, which does not exist in the schema committed in this reachable state (%s)",
+			best.svcVersion.ServiceName, best.svcVersion.Version, factLabel, target, causeText)
 	}
 
 	evidence := []ir.Evidence{
 		{
 			Kind:        ir.EvidenceMigrationOp,
-			Artifact:    best.op.MigrationID,
-			Locator:     best.op.Op.Kind.String(),
-			Line:        best.op.Op.SourceLine,
-			Description: fmt.Sprintf("migration drops %s", target),
+			Artifact:    migID,
+			Description: causeText,
 		},
 		{
 			Kind:        evidenceKind,
@@ -170,6 +235,21 @@ func evaluateDestructiveColumnRemoval(
 		},
 	}
 
+	var recommended []string
+	if best.removingOp != nil {
+		recommended = []string{
+			fmt.Sprintf("deploy a compatibility release of %s that removes the dependency on %s", best.svcVersion.ServiceName, target),
+			"wait for the compatibility release to complete its rollout",
+			fmt.Sprintf("verify no live version still declares a dependency on %s", target),
+			fmt.Sprintf("apply migration %q", migID),
+		}
+	} else {
+		recommended = []string{
+			fmt.Sprintf("add the migration that creates %s before %s@%s becomes live", target, best.svcVersion.ServiceName, best.svcVersion.Version),
+			"or delay this version's rollout until that migration has committed",
+		}
+	}
+
 	rollbackVerdict := EvaluateRollback(g.State(best.stateID).SchemaState.CommittedOps, best.svc)
 
 	return ir.Diagnostic{
@@ -178,17 +258,46 @@ func evaluateDestructiveColumnRemoval(
 		Summary:     summary,
 		Evidence:    evidence,
 		Counterexample: &ir.Counterexample{
-			Path:           path,
-			ViolatingState: g.State(best.stateID),
-			RecommendedSequence: []string{
-				fmt.Sprintf("deploy a compatibility release of %s that removes the dependency on %s", best.svcVersion.ServiceName, target),
-				"wait for the compatibility release to complete its rollout",
-				fmt.Sprintf("verify no live version still declares a dependency on %s", target),
-				fmt.Sprintf("apply migration %q", best.op.MigrationID),
-			},
+			Path:                path,
+			ViolatingState:      g.State(best.stateID),
+			RecommendedSequence: recommended,
 		},
 		RollbackVerdict: rollbackVerdict,
 	}
+}
+
+// graphHasAnyCommittedOp reports whether any reachable state in g reflects
+// at least one committed migration operation — i.e., whether this plan's
+// schema ever differs from its BaseSchema anywhere in the graph.
+func graphHasAnyCommittedOp(g *graph.Graph) bool {
+	for _, s := range g.Nodes {
+		if len(s.SchemaState.CommittedOps) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// findRemovingOp finds the CommittedOp responsible for col not existing
+// in this state's schema — an OpDropColumn or OpRenameColumn naming col
+// as its (old) column — scanning in reverse so the most recently
+// committed matching op wins. found=false means col was simply never
+// present in the plan's schema timeline (docs/scenario-corpus.md
+// SC-UNSAFE-004/005), not removed from it.
+func findRemovingOp(committed []ir.CommittedOp, col ir.ColumnRef) (op ir.CommittedOp, found bool) {
+	for i := len(committed) - 1; i >= 0; i-- {
+		cop := committed[i]
+		if cop.Op.Table != col.Table {
+			continue
+		}
+		switch cop.Op.Kind {
+		case ir.OpDropColumn, ir.OpRenameColumn:
+			if cop.Op.Column == col.Column {
+				return cop, true
+			}
+		}
+	}
+	return ir.CommittedOp{}, false
 }
 
 func describeLiveSet(live []ir.LiveVersion) string {

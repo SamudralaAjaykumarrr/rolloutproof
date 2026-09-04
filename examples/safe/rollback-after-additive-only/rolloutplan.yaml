@@ -1,0 +1,17 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+
+workload: api
+fromVersion: v1
+toVersion: v2
+
+migrations:
+  - file: migrations/010_add_phone.sql
+    phase: during
+
+# SC-SAFE-007-shaped: the only migration is purely additive and neither
+# version depends on the new column, so rolling back to api@v1 against
+# the current (migrated) schema is safe — no data api@v1 needs is gone,
+# and no NOT NULL/type constraint api@v1 predates has been introduced.
+rollback:
+  toVersion: v1

@@ -18,7 +18,7 @@ func setNotNullMigration(t *testing.T) ir.Migration {
 	return m
 }
 
-func notNullGraph(t *testing.T) *graph.Graph {
+func notNullGraph(t *testing.T) (ir.RolloutPlan, *graph.Graph) {
 	t.Helper()
 	schema := mustSchema(t, mustTable(t, "users", []ir.Column{
 		{Name: "id", Type: "integer"},
@@ -36,18 +36,18 @@ func notNullGraph(t *testing.T) *graph.Graph {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	return g
+	return plan, g
 }
 
 // SC-UNSAFE-003 (docs/scenario-corpus.md): an old writer's contract
 // declares it writes users rows but never asserts email is populated.
 func TestRPDB004_UnsafeWhenOldWriterOmitsColumn(t *testing.T) {
-	g := notNullGraph(t)
+	plan, g := notNullGraph(t)
 	services := map[ir.ServiceKey]ir.Service{
 		{Name: "api", Version: "v1"}: mustService(t, "api", "v1", nil, []ir.ColumnRef{{Table: "users", Column: "id"}}),
 		{Name: "api", Version: "v2"}: mustService(t, "api", "v2", nil, []ir.ColumnRef{{Table: "users", Column: "id"}, {Table: "users", Column: "email"}}),
 	}
-	diags := Evaluate(g, services)
+	diags := Evaluate(plan, g, services)
 	var d *ir.Diagnostic
 	for i := range diags {
 		if diags[i].InvariantID == RPDB004 {
@@ -89,7 +89,7 @@ func TestRPDB004_SafeWithDefault(t *testing.T) {
 		{Name: "api", Version: "v1"}: mustService(t, "api", "v1", nil, []ir.ColumnRef{{Table: "orders", Column: "id"}}),
 		{Name: "api", Version: "v2"}: mustService(t, "api", "v2", nil, []ir.ColumnRef{{Table: "orders", Column: "id"}}),
 	}
-	diags := Evaluate(g, services)
+	diags := Evaluate(plan, g, services)
 	for _, d := range diags {
 		if d.Verdict == ir.VerdictUnsafe {
 			t.Fatalf("expected no UNSAFE diagnostics when a DEFAULT satisfies old writers, got %+v", d)
@@ -101,12 +101,12 @@ func TestRPDB004_SafeWithDefault(t *testing.T) {
 // RP-DB-004, even though it "touches" the table via reads — WritesTable
 // must be checked independently of TouchesTable.
 func TestRPDB004_SafeForReadOnlyVersion(t *testing.T) {
-	g := notNullGraph(t)
+	plan, g := notNullGraph(t)
 	services := map[ir.ServiceKey]ir.Service{
 		{Name: "api", Version: "v1"}: mustService(t, "api", "v1", []ir.ColumnRef{{Table: "users", Column: "id"}}, nil),
 		{Name: "api", Version: "v2"}: mustService(t, "api", "v2", []ir.ColumnRef{{Table: "users", Column: "id"}}, nil),
 	}
-	diags := Evaluate(g, services)
+	diags := Evaluate(plan, g, services)
 	for _, d := range diags {
 		if d.Verdict == ir.VerdictUnsafe {
 			t.Fatalf("expected no UNSAFE diagnostics for a read-only version, got %+v", d)
@@ -115,12 +115,12 @@ func TestRPDB004_SafeForReadOnlyVersion(t *testing.T) {
 }
 
 func TestRPDB004_UnknownWhenTableNeverMentioned(t *testing.T) {
-	g := notNullGraph(t)
+	plan, g := notNullGraph(t)
 	services := map[ir.ServiceKey]ir.Service{
 		{Name: "api", Version: "v1"}: mustService(t, "api", "v1", nil, nil),
 		{Name: "api", Version: "v2"}: mustService(t, "api", "v2", nil, nil),
 	}
-	diags := Evaluate(g, services)
+	diags := Evaluate(plan, g, services)
 	for _, d := range diags {
 		if d.InvariantID != RPDB004 {
 			continue

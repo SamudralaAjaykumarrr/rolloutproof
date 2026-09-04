@@ -16,11 +16,18 @@
 //   - RP-DB-005: a live service version still reads or writes a column
 //     name a committed migration has renamed away, with no compatibility
 //     period.
+//   - RP-DB-006: an explicitly declared expand/contract migration pair
+//     whose contract step is not sequenced strictly after full rollout
+//     completion (rpdb006.go; V1's single-plan scoping is documented on
+//     evaluateExpandContractSequence).
 //
-// RP-DB-006/007, RP-K8S-*, RP-API-*, RP-ORDER-*, and RP-ROLLBACK-* are
-// documented but not yet implemented; see the catalog's own "Notes on
-// catalog evolution" for how new invariant IDs are added without
-// disturbing existing ones.
+// RP-DB-007 and the RP-ROLLBACK family (RP-ROLLBACK-001/002/003) are
+// implemented in rollback_plan.go, evaluated separately via
+// EvaluateRollbackPlan since they need plan.RollbackTarget and build
+// their own transition graph (graph.BuildRollback) rather than reasoning
+// over g. RP-K8S-*, RP-API-*, and RP-ORDER-* are documented but not yet
+// implemented; see the catalog's own "Notes on catalog evolution" for how
+// new invariant IDs are added without disturbing existing ones.
 //
 // An invariant here never inspects raw YAML/SQL: it reasons only over
 // ir.RolloutState, ir.CommittedOp, and ir.Service facts already lifted
