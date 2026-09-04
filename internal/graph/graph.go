@@ -7,6 +7,11 @@ import (
 	"github.com/SamudralaAjaykumarrr/rolloutproof/internal/ir"
 )
 
+// maxGraphNodes bounds transition graph construction (see Build's use of
+// it) so a pathological plan fails fast with a clear error instead of
+// exhausting memory or hanging.
+const maxGraphNodes = 200_000
+
 // Edge is one transition graph edge: a mechanical event moving the
 // rollout from one RolloutState to another (docs/architecture.md §4.1).
 type Edge struct {
@@ -216,6 +221,22 @@ func Build(plan ir.RolloutPlan) (*Graph, error) {
 
 	numDuring := len(duringMigs)
 	numDuringVectors := 1 << numDuring
+
+	// This package's own doc comment documents the O(3^W x 2^D) growth
+	// (docs/adr/0003) as an accepted V1 tradeoff for realistic plans — a
+	// small, single-digit number of workloads and in-flight migrations.
+	// It is not, however, a promise to build an unbounded graph for a
+	// pathological or malformed plan (e.g. dozens of PhaseDuringRollout
+	// migrations): failing fast with a clear error is the correct
+	// behavior for an input this large, not silently spending minutes of
+	// CPU and gigabytes of memory before the caller can even see a
+	// result. maxGraphNodes is deliberately generous relative to any
+	// plan this project's own scenario corpus or examples exercise.
+	if nodeCount := len(combos) * numDuringVectors; nodeCount > maxGraphNodes {
+		return nil, fmt.Errorf(
+			"graph: this plan would produce %d transition graph nodes (%d workload version combinations x %d during-rollout migration commit combinations), which exceeds the %d-node safety limit — reduce the number of concurrently-changing workloads or PhaseDuringRollout migrations in this plan",
+			nodeCount, len(combos), numDuringVectors, maxGraphNodes)
+	}
 
 	g := &Graph{}
 	// nodeID(comboIdx, duringVector) — comboIdx and duringVector are both

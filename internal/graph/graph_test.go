@@ -1,6 +1,7 @@
 package graph
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 
@@ -407,6 +408,37 @@ func TestShortestPath_ToStartIsEmpty(t *testing.T) {
 	}
 	if path := g.ShortestPath(g.Start); len(path) != 0 {
 		t.Fatalf("expected empty path to the start node, got %+v", path)
+	}
+}
+
+// TestBuild_RejectsOversizedPlan is the regression for an adversarial-review
+// finding: before maxGraphNodes existed, a plan with enough
+// PhaseDuringRollout migrations (2^D nodes) had no bound at all and could
+// exhaust memory or hang instead of failing fast with a clear error.
+func TestBuild_RejectsOversizedPlan(t *testing.T) {
+	w := mustWorkload(t, rollingUpdateStrategy())
+	// 20 PhaseDuringRollout migrations -> 2^20 (over 1,000,000) nodes,
+	// comfortably past maxGraphNodes.
+	migrations := make([]ir.MigrationTiming, 0, 20)
+	for i := 0; i < 20; i++ {
+		m, err := ir.NewMigration(fmt.Sprintf("m%d.sql", i), []ir.MigrationOp{
+			{Kind: ir.OpAddColumn, Table: "t", Column: fmt.Sprintf("c%d", i), NewType: "text", Nullable: true},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		migrations = append(migrations, ir.MigrationTiming{Migration: m, Phase: ir.PhaseDuringRollout})
+	}
+	plan, err := ir.NewRolloutPlan(ir.RolloutPlan{
+		BaseSchema: mustSchema(t, mustTable(t, "t", nil)),
+		Workloads:  []ir.WorkloadChange{{Workload: w, FromVersion: "v1", ToVersion: "v2"}},
+		Migrations: migrations,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, err := Build(plan); err == nil {
+		t.Fatalf("expected Build to reject a plan whose graph would exceed maxGraphNodes")
 	}
 }
 

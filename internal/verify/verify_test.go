@@ -65,6 +65,37 @@ func TestRun_EveryUnsafeCounterexampleHasAnOutcome(t *testing.T) {
 	}
 }
 
+// TestRun_NoDuplicateInvariantIDs is an adversarial-review regression: the
+// full pipeline chains five separate evaluation calls
+// (Evaluate/EvaluateRollbackPlan/EvaluateAPI/EvaluateOrder/EvaluateK8s)
+// into one Diagnostic slice, and a copy-paste or wiring mistake could
+// silently duplicate an ID (report.RenderText and Summary's counts would
+// then double-count it). Checked against the richest fixture this corpus
+// has — the one with the most invariant families actually firing.
+func TestRun_NoDuplicateInvariantIDs(t *testing.T) {
+	dirs := []string{
+		"unsafe/rollback-after-irreversible-drop",
+		"unsafe/order-consumer-behind-provider",
+		"unsafe/api-removed-response-field",
+		"unsafe/k8s-readiness-before-dependency",
+	}
+	for _, dir := range dirs {
+		diags, err := Run(exampleDir(t, dir))
+		if err != nil {
+			t.Fatalf("%s: Run: %v", dir, err)
+		}
+		seen := make(map[string]int, len(diags))
+		for _, d := range diags {
+			seen[d.InvariantID]++
+		}
+		for id, count := range seen {
+			if count > 1 {
+				t.Errorf("%s: invariant ID %s appears %d times in one Run() result", dir, id, count)
+			}
+		}
+	}
+}
+
 func diagFor(diags []ir.Diagnostic, id string) *ir.Diagnostic {
 	for i := range diags {
 		if diags[i].InvariantID == id {
