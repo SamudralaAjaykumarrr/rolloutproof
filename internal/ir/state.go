@@ -31,6 +31,15 @@ func compareLiveVersions(a, b LiveVersion) int {
 type CommittedOp struct {
 	MigrationID string
 	Op          MigrationOp
+
+	// PriorType is the column's declared type immediately before this
+	// operation committed, populated only when Op.Kind == OpAlterColumnType
+	// (docs/invariants.md RP-DB-003's "prior Column.Type" required
+	// evidence). Empty when not applicable, or when it could not be
+	// determined (e.g. an earlier unclassified operation left schema
+	// state unknown from that point forward) — RP-DB-003 must treat an
+	// empty PriorType as UNKNOWN, never as a license to skip the check.
+	PriorType string
 }
 
 // SchemaState is a schema snapshot together with the trail of migration

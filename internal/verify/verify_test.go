@@ -108,6 +108,30 @@ func TestRun_UnsafeRenameColumnWithoutCompat(t *testing.T) {
 	}
 }
 
+func TestRun_SafeWideningTypeChange(t *testing.T) {
+	diags, err := Run(exampleDir(t, "safe/widening-type-change"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictSafe {
+		t.Fatalf("expected SAFE, got %v (%+v)", got, diags)
+	}
+}
+
+func TestRun_UnsafeNarrowingTypeChange(t *testing.T) {
+	diags, err := Run(exampleDir(t, "unsafe/narrowing-type-change"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictUnsafe {
+		t.Fatalf("expected UNSAFE, got %v (%+v)", got, diags)
+	}
+	d := diagFor(diags, invariant.RPDB003)
+	if d == nil || d.Verdict != ir.VerdictUnsafe {
+		t.Fatalf("expected RP-DB-003 UNSAFE, got %+v", d)
+	}
+}
+
 func TestRun_UnsafeNotNullWithoutDefault(t *testing.T) {
 	diags, err := Run(exampleDir(t, "unsafe/not-null-without-default"))
 	if err != nil {

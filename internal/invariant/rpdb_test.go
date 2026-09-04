@@ -69,6 +69,15 @@ func flagshipGraph(t *testing.T) *graph.Graph {
 	return g
 }
 
+func diagFor(diags []ir.Diagnostic, id string) *ir.Diagnostic {
+	for i := range diags {
+		if diags[i].InvariantID == id {
+			return &diags[i]
+		}
+	}
+	return nil
+}
+
 func mustService(t *testing.T, name, version string, reads, writes []ir.ColumnRef) ir.Service {
 	t.Helper()
 	s, err := ir.NewService(name, version, reads, writes, nil)

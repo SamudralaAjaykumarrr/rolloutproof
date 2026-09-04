@@ -8,19 +8,19 @@
 //     migration has dropped.
 //   - RP-DB-002: a live service version writes a column a committed
 //     migration has dropped.
+//   - RP-DB-003: a live service version reads or writes a column whose
+//     type a committed migration has changed incompatibly (typecompat.go's
+//     fixed Widening/Narrowing/Incomparable table).
 //   - RP-DB-004: a live service version writes rows to a table without
 //     populating a column a committed migration has made NOT NULL.
 //   - RP-DB-005: a live service version still reads or writes a column
 //     name a committed migration has renamed away, with no compatibility
 //     period.
 //
-// Every other invariant in docs/invariants.md — RP-DB-003 (type
-// compatibility), RP-DB-006/007 (expand/contract sequencing, rollback
-// preconditions), RP-K8S-*, RP-API-*, RP-ORDER-*, and RP-ROLLBACK-* as a
-// first-class evaluation of RolloutPlan.RollbackTarget against its own
-// transition graph — is documented but not yet implemented; see the
-// catalog's own "Notes on catalog evolution" for how new invariant IDs
-// are added without disturbing existing ones.
+// RP-DB-006/007, RP-K8S-*, RP-API-*, RP-ORDER-*, and RP-ROLLBACK-* are
+// documented but not yet implemented; see the catalog's own "Notes on
+// catalog evolution" for how new invariant IDs are added without
+// disturbing existing ones.
 //
 // An invariant here never inspects raw YAML/SQL: it reasons only over
 // ir.RolloutState, ir.CommittedOp, and ir.Service facts already lifted

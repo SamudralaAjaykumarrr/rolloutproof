@@ -29,6 +29,7 @@ func Evaluate(g *graph.Graph, services map[ir.ServiceKey]ir.Service) []ir.Diagno
 	return []ir.Diagnostic{
 		evaluateDestructiveColumnRemoval(RPDB001, g, services, ir.Service.ReadsColumn, ir.EvidenceSchemaRead, "reads"),
 		evaluateDestructiveColumnRemoval(RPDB002, g, services, ir.Service.WritesColumn, ir.EvidenceSchemaWrite, "writes"),
+		evaluateTypeCompatibility(g, services),
 		evaluateNotNullIntroduction(g, services),
 		evaluateRenameWithoutCompatibility(g, services),
 	}

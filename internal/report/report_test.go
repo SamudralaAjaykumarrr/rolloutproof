@@ -165,7 +165,7 @@ func TestSummary_Deterministic(t *testing.T) {
 	if a != b {
 		t.Fatalf("Summary must be deterministic: %q vs %q", a, b)
 	}
-	if a != "SAFE — 4 invariant(s) evaluated, 0 violated, 0 unknown" {
+	if a != "SAFE — 5 invariant(s) evaluated, 0 violated, 0 unknown" {
 		t.Fatalf("unexpected summary: %q", a)
 	}
 }

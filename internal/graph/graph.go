@@ -345,7 +345,19 @@ func applyAll(schema ir.Schema, committed []ir.CommittedOp, mts []ir.MigrationTi
 func applyOne(schema ir.Schema, committed []ir.CommittedOp, indeterminate bool, mt ir.MigrationTiming) (ir.Schema, []ir.CommittedOp, bool) {
 	out := append([]ir.CommittedOp(nil), committed...)
 	for _, op := range mt.Migration.Operations {
-		out = append(out, ir.CommittedOp{MigrationID: mt.Migration.ID, Op: op})
+		cop := ir.CommittedOp{MigrationID: mt.Migration.ID, Op: op}
+		if op.Kind == ir.OpAlterColumnType && !indeterminate {
+			// Captured here, immediately before Apply, since this is the
+			// one point in the pipeline that holds both the pre-op Schema
+			// and the op together (docs/invariants.md RP-DB-003's
+			// required "prior Column.Type" evidence).
+			if t, ok := schema.Table(op.Table); ok {
+				if c, ok := t.Column(op.Column); ok {
+					cop.PriorType = c.Type
+				}
+			}
+		}
+		out = append(out, cop)
 		if indeterminate {
 			continue
 		}

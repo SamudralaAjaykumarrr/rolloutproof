@@ -31,9 +31,11 @@ func TestRun_ExitCodes(t *testing.T) {
 		wantExit int
 	}{
 		{"safe", "safe/additive-column", exitSafe},
+		{"safe widening type change", "safe/widening-type-change", exitSafe},
 		{"unsafe drop column", "unsafe/drop-column-before-drain", exitUnsafe},
 		{"unsafe rename", "unsafe/rename-column-without-compat", exitUnsafe},
 		{"unsafe not null", "unsafe/not-null-without-default", exitUnsafe},
+		{"unsafe narrowing type change", "unsafe/narrowing-type-change", exitUnsafe},
 		{"unknown missing metadata", "unknown/missing-service-metadata", exitUnknown},
 	}
 	for _, tc := range cases {
