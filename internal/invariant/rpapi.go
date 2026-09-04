@@ -311,15 +311,23 @@ func aggregateAPI(rpapi001, rpapi002, rpapi003 ir.Diagnostic) ir.Diagnostic {
 			Counterexample: counterexample,
 		}
 	case ir.VerdictUnknown:
-		var gaps []ir.EvidenceGap
+		// RP-API-001/002/003 independently discover the same missing
+		// evidence whenever the same consumer/contract pair is the
+		// reason all three can't be evaluated (they share one scan —
+		// see EvaluateAPI) — deduplicated here via gapSet the same way
+		// every other invariant's own gap collection already is, so the
+		// aggregate doesn't repeat one gap three times.
+		gaps := newGapSet()
 		for _, d := range []ir.Diagnostic{rpapi001, rpapi002, rpapi003} {
-			gaps = append(gaps, d.MissingEvidence...)
+			for _, g := range d.MissingEvidence {
+				gaps.add(g)
+			}
 		}
 		return ir.Diagnostic{
 			InvariantID:     RPAPI004,
 			Verdict:         ir.VerdictUnknown,
 			Summary:         fmt.Sprintf("%s: insufficient evidence to confirm every live provider/consumer pair is compatible", RPAPI004),
-			MissingEvidence: gaps,
+			MissingEvidence: gaps.list(),
 		}
 	default:
 		return ir.Diagnostic{

@@ -212,6 +212,24 @@ func TestRPAPI_UnknownWhenProviderNotInPlan(t *testing.T) {
 			t.Fatalf("expected %s UNKNOWN with identified missing evidence, got %+v", id, d)
 		}
 	}
+
+	// Adversarial-review regression: RP-API-004 aggregates
+	// RP-API-001/002/003's MissingEvidence, and all three independently
+	// discover the *same* gap here (one shared scan, see EvaluateAPI) —
+	// the aggregate must deduplicate, not repeat it three times.
+	agg := diagFor(diags, RPAPI004)
+	if agg == nil || agg.Verdict != ir.VerdictUnknown {
+		t.Fatalf("expected RP-API-004 UNKNOWN, got %+v", agg)
+	}
+	seen := make(map[ir.EvidenceGap]int, len(agg.MissingEvidence))
+	for _, g := range agg.MissingEvidence {
+		seen[g]++
+	}
+	for g, count := range seen {
+		if count > 1 {
+			t.Fatalf("expected RP-API-004's MissingEvidence to be deduplicated, got %s@%s x%d in %+v", g.Field, g.Reason, count, agg.MissingEvidence)
+		}
+	}
 }
 
 // Semantic mutation: removing consumer compatibility (the response field
