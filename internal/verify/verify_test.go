@@ -36,6 +36,35 @@ func exampleDir(t *testing.T, rel string) string {
 	return filepath.Join(repoRoot(t), "examples", rel)
 }
 
+// TestRun_EveryUnsafeCounterexampleHasAnOutcome guards against the class
+// of bug this session found: a hardcoded, family-specific "runtime
+// failure" string that was wrong for non-DB invariants. Every UNSAFE
+// diagnostic's Counterexample must set its own Outcome — an empty one is
+// a real invariant bug, not a cosmetic gap (ir.Counterexample's own doc
+// comment).
+func TestRun_EveryUnsafeCounterexampleHasAnOutcome(t *testing.T) {
+	dirs := []string{
+		"unsafe/drop-column-before-drain", "unsafe/rename-column-without-compat",
+		"unsafe/not-null-without-default", "unsafe/narrowing-type-change",
+		"unsafe/expand-contract-same-rollout", "unsafe/rollback-after-irreversible-drop",
+		"unsafe/api-removed-response-field",
+	}
+	for _, dir := range dirs {
+		diags, err := Run(exampleDir(t, dir))
+		if err != nil {
+			t.Fatalf("%s: Run: %v", dir, err)
+		}
+		for _, d := range diags {
+			if d.Verdict != ir.VerdictUnsafe || d.Counterexample == nil {
+				continue
+			}
+			if d.Counterexample.Outcome == "" {
+				t.Errorf("%s: %s: UNSAFE counterexample has no Outcome", dir, d.InvariantID)
+			}
+		}
+	}
+}
+
 func diagFor(diags []ir.Diagnostic, id string) *ir.Diagnostic {
 	for i := range diags {
 		if diags[i].InvariantID == id {
@@ -171,6 +200,49 @@ func TestRun_UnsafeExpandContractSameRollout(t *testing.T) {
 	d := diagFor(diags, invariant.RPDB006)
 	if d == nil || d.Verdict != ir.VerdictUnsafe {
 		t.Fatalf("expected RP-DB-006 UNSAFE, got %+v", d)
+	}
+}
+
+// --- api: safe + unsafe + unknown ---
+
+// SC-SAFE-003: provider adds an optional response field.
+func TestRun_SafeAPIBackwardCompatibleAddition(t *testing.T) {
+	diags, err := Run(exampleDir(t, "safe/api-backward-compatible-addition"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictSafe {
+		t.Fatalf("expected SAFE, got %v (%+v)", got, diags)
+	}
+}
+
+// SC-UNSAFE-006-shaped: provider renames a required response field while
+// a live consumer still requires the old name.
+func TestRun_UnsafeAPIRemovedResponseField(t *testing.T) {
+	diags, err := Run(exampleDir(t, "unsafe/api-removed-response-field"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictUnsafe {
+		t.Fatalf("expected UNSAFE, got %v (%+v)", got, diags)
+	}
+	d := diagFor(diags, invariant.RPAPI003)
+	if d == nil || d.Verdict != ir.VerdictUnsafe {
+		t.Fatalf("expected RP-API-003 UNSAFE, got %+v", d)
+	}
+}
+
+func TestRun_UnknownAPIProviderContractMissing(t *testing.T) {
+	diags, err := Run(exampleDir(t, "unknown/api-provider-not-in-plan"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictUnknown {
+		t.Fatalf("expected UNKNOWN, got %v (%+v)", got, diags)
+	}
+	d := diagFor(diags, invariant.RPAPI001)
+	if d == nil || d.Verdict != ir.VerdictUnknown || len(d.MissingEvidence) == 0 {
+		t.Fatalf("expected RP-API-001 UNKNOWN with identified missing evidence, got %+v", d)
 	}
 }
 

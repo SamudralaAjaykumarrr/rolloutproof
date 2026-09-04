@@ -15,6 +15,16 @@ type Counterexample struct {
 	// precondition was found satisfied.
 	ViolatingState RolloutState
 
+	// Outcome is a short, invariant-specific description of the concrete
+	// failure this path leads to (e.g. "the live version's declared
+	// schema access no longer matches the committed schema", or "the
+	// consumer receives a response missing a field it requires") — the
+	// domain-specific last step a renderer appends after Path. Every
+	// invariant that builds a Counterexample must set this; an empty
+	// value is a bug (a family-specific claim like a schema mismatch
+	// must never be assumed as a generic default — docs/adr/0006).
+	Outcome string
+
 	// RecommendedSequence is a human-readable, ordered remediation, when
 	// one is derivable from the same evidence. Empty is a valid,
 	// honest output when no generic remediation pattern applies

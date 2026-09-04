@@ -100,6 +100,7 @@ func evaluateExpandContractSequence(plan ir.RolloutPlan, g *graph.Graph) ir.Diag
 		Counterexample: &ir.Counterexample{
 			Path:           path,
 			ViolatingState: g.State(stateID),
+			Outcome:        fmt.Sprintf("the contract migration %q commits while a consumer of the pre-expand shape may still be live", contractID),
 			RecommendedSequence: []string{
 				"confirm the release that stops depending on the expanded shape has completed its rollout",
 				fmt.Sprintf("schedule the contract migration %q with phase \"after\", in a separate, later rollout plan if needed", contractID),

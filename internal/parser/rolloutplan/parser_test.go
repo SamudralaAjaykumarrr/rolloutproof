@@ -178,6 +178,84 @@ rollback:
 	}
 }
 
+const secondDeploymentYAML = `
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  labels:
+    rolloutproof.dev/service: checkout
+    rolloutproof.dev/version: v1
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector: {matchLabels: {app: checkout}}
+  template:
+    metadata: {labels: {app: checkout}}
+    spec:
+      containers: [{name: checkout, image: "checkout:v1"}]
+`
+
+func TestLoadDir_StaticWorkload(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "deployment.yaml", deploymentYAML+"\n---\n"+secondDeploymentYAML)
+	writeFile(t, dir, "schema.yaml", schemaYAML)
+	writeFile(t, dir, "migration.sql", migrationSQL)
+	writeFile(t, dir, "rolloutplan.yaml", `
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+workload: api
+fromVersion: v1
+toVersion: v2
+migrations:
+  - file: migration.sql
+    phase: during
+staticWorkloads:
+  - checkout
+`)
+	plan, err := LoadDir(dir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(plan.Workloads) != 2 {
+		t.Fatalf("expected 2 workload changes (1 changing + 1 static), got %d: %+v", len(plan.Workloads), plan.Workloads)
+	}
+	var found bool
+	for _, wc := range plan.Workloads {
+		if wc.Workload.Name == "checkout" {
+			found = true
+			if wc.FromVersion != "v1" || wc.ToVersion != "v1" {
+				t.Fatalf("expected checkout to be a no-op transition at its declared version, got %+v", wc)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected checkout to appear among plan.Workloads")
+	}
+}
+
+func TestLoadDir_RejectsUnknownStaticWorkload(t *testing.T) {
+	dir := t.TempDir()
+	writeFullFixture(t, dir, "during")
+	// Overwrite rolloutplan.yaml with a staticWorkloads entry naming a
+	// Deployment that doesn't exist in deployment.yaml.
+	writeFile(t, dir, "rolloutplan.yaml", `
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+workload: api
+fromVersion: v1
+toVersion: v2
+migrations:
+  - file: migration.sql
+    phase: during
+staticWorkloads:
+  - nonexistent
+`)
+	if _, err := LoadDir(dir); err == nil {
+		t.Fatalf("expected an error for a staticWorkloads entry with no matching Deployment")
+	}
+}
+
 func TestParseSchema_RejectsUnknownField(t *testing.T) {
 	_, err := ParseSchema("bad.yaml", []byte(`
 apiVersion: rolloutproof.dev/v1alpha1

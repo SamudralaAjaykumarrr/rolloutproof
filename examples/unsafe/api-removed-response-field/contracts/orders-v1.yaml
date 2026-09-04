@@ -1,0 +1,17 @@
+apiVersion: rolloutproof.dev/v1beta1
+kind: ServiceContract
+
+service: orders
+version: v1
+
+api:
+  provides:
+    - contract: orders-api
+      endpoints:
+        - operation: "GET /orders/:id"
+          response:
+            fields:
+              - name: id
+                required: true
+              - name: total
+                required: true

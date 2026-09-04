@@ -18,6 +18,15 @@
 // migration Phase is the single most safety-critical fact in this whole
 // format (docs/architecture.md §3.3, assumption A2) and is always an
 // explicit, authored field — never inferred from file order or timing.
+//
+// staticWorkloads (optional) names other Deployments in deployment.yaml
+// that are present throughout this rollout but do not themselves change
+// version — included so they appear in the transition graph's Live sets
+// at all. Without this, a service that isn't the one changing version in
+// this plan would never be live in any RolloutState, which is exactly
+// wrong for RP-API: a consumer that isn't itself being redeployed still
+// needs to be checked against whatever provider version becomes live
+// (docs/invariants.md RP-API-*).
 package rolloutplan
 
 import (
@@ -60,14 +69,15 @@ type expandContractEntry struct {
 }
 
 type planDoc struct {
-	APIVersion     string                `yaml:"apiVersion"`
-	Kind           string                `yaml:"kind"`
-	Workload       string                `yaml:"workload"`
-	FromVersion    string                `yaml:"fromVersion"`
-	ToVersion      string                `yaml:"toVersion"`
-	Migrations     []migrationEntry      `yaml:"migrations"`
-	Rollback       *rollbackEntry        `yaml:"rollback"`
-	ExpandContract []expandContractEntry `yaml:"expandContract"`
+	APIVersion      string                `yaml:"apiVersion"`
+	Kind            string                `yaml:"kind"`
+	Workload        string                `yaml:"workload"`
+	FromVersion     string                `yaml:"fromVersion"`
+	ToVersion       string                `yaml:"toVersion"`
+	Migrations      []migrationEntry      `yaml:"migrations"`
+	Rollback        *rollbackEntry        `yaml:"rollback"`
+	ExpandContract  []expandContractEntry `yaml:"expandContract"`
+	StaticWorkloads []string              `yaml:"staticWorkloads"`
 }
 
 func parsePhase(filename, s string) (ir.MigrationPhase, error) {
@@ -173,9 +183,33 @@ func LoadDir(dir string) (ir.RolloutPlan, error) {
 		links = append(links, ir.ExpandContractLink{ExpandMigrationID: ece.Expand, ContractMigrationID: ece.Contract})
 	}
 
+	workloadChanges := []ir.WorkloadChange{{Workload: *workload, FromVersion: doc.FromVersion, ToVersion: doc.ToVersion}}
+	for _, name := range doc.StaticWorkloads {
+		if name == doc.Workload {
+			return ir.RolloutPlan{}, &ParseError{File: planPath, Message: fmt.Sprintf(
+				"%q is both the changing workload and a staticWorkloads entry", name)}
+		}
+		var sw *ir.Workload
+		for i := range workloads {
+			if workloads[i].Name == name {
+				sw = &workloads[i]
+				break
+			}
+		}
+		if sw == nil {
+			return ir.RolloutPlan{}, &ParseError{File: deploymentPath, Message: fmt.Sprintf(
+				"no Deployment named %q found (rolloutplan.yaml names this as a static workload)", name)}
+		}
+		if sw.Version == "" {
+			return ir.RolloutPlan{}, &ParseError{File: deploymentPath, Message: fmt.Sprintf(
+				"static workload %q has no declared version (rolloutproof.dev/version label)", name)}
+		}
+		workloadChanges = append(workloadChanges, ir.WorkloadChange{Workload: *sw, FromVersion: sw.Version, ToVersion: sw.Version})
+	}
+
 	plan, err := ir.NewRolloutPlan(ir.RolloutPlan{
 		BaseSchema:          baseSchema,
-		Workloads:           []ir.WorkloadChange{{Workload: *workload, FromVersion: doc.FromVersion, ToVersion: doc.ToVersion}},
+		Workloads:           workloadChanges,
 		Migrations:          migrationTimings,
 		RollbackTarget:      rollbackTarget,
 		ExpandContractLinks: links,

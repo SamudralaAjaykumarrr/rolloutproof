@@ -131,6 +131,7 @@ func evaluateTypeCompatibility(g *graph.Graph, services map[ir.ServiceKey]ir.Ser
 		Counterexample: &ir.Counterexample{
 			Path:           path,
 			ViolatingState: g.State(best.stateID),
+			Outcome:        fmt.Sprintf("the live version's value under the old type (%s) is rejected or corrupted once interpreted as %s", best.op.PriorType, best.op.Op.NewType),
 			RecommendedSequence: []string{
 				fmt.Sprintf("deploy a compatibility release of %s that tolerates both %s and %s", best.svcVersion.ServiceName, best.op.PriorType, best.op.Op.NewType),
 				"wait for the compatibility release to complete its rollout",

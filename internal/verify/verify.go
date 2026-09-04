@@ -30,7 +30,7 @@ func Run(dir string) ([]ir.Diagnostic, error) {
 		return nil, err
 	}
 
-	services, err := loadServices(dir)
+	services, contracts, err := loadServices(dir)
 	if err != nil {
 		return nil, err
 	}
@@ -42,6 +42,7 @@ func Run(dir string) ([]ir.Diagnostic, error) {
 
 	diags := invariant.Evaluate(plan, g, services)
 	diags = append(diags, invariant.EvaluateRollbackPlan(plan, g, services)...)
+	diags = append(diags, invariant.EvaluateAPI(g, services, contracts)...)
 	return diags, nil
 }
 
@@ -49,14 +50,14 @@ func Run(dir string) ([]ir.Diagnostic, error) {
 // directory exists. Its absence is not an error: every invariant that
 // needs a live version's declared facts will report UNKNOWN, which is
 // the correct, honest outcome (docs/vision.md §10), not a tool failure.
-func loadServices(dir string) (map[ir.ServiceKey]ir.Service, error) {
+func loadServices(dir string) (map[ir.ServiceKey]ir.Service, map[ir.APIContractKey]ir.APIContract, error) {
 	contractsDir := filepath.Join(dir, "contracts")
 	if _, err := os.Stat(contractsDir); err != nil {
-		return map[ir.ServiceKey]ir.Service{}, nil
+		return map[ir.ServiceKey]ir.Service{}, map[ir.APIContractKey]ir.APIContract{}, nil
 	}
 	reg, err := contract.LoadDir(contractsDir)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return reg.Services(), nil
+	return reg.Services(), reg.APIContracts(), nil
 }

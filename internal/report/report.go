@@ -72,7 +72,9 @@ func renderDiagnostic(b *strings.Builder, d ir.Diagnostic) {
 		for i, ev := range d.Counterexample.Path {
 			fmt.Fprintf(b, "%d. %s\n", i+1, ev.Detail)
 		}
-		fmt.Fprintf(b, "%d. runtime failure: the live version's declared schema access no longer matches the committed schema\n", len(d.Counterexample.Path)+1)
+		if d.Counterexample.Outcome != "" {
+			fmt.Fprintf(b, "%d. runtime failure: %s\n", len(d.Counterexample.Path)+1, d.Counterexample.Outcome)
+		}
 	}
 
 	if d.Verdict == ir.VerdictUnsafe {

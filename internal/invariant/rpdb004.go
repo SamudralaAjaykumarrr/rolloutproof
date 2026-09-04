@@ -195,6 +195,7 @@ func evaluateNotNullIntroduction(g *graph.Graph, services map[ir.ServiceKey]ir.S
 		Counterexample: &ir.Counterexample{
 			Path:                path,
 			ViolatingState:      g.State(best.stateID),
+			Outcome:             fmt.Sprintf("the write to %s is rejected outright by the NOT NULL constraint", target),
 			RecommendedSequence: recommended,
 		},
 		// RollbackVerdict is deliberately left at its zero value

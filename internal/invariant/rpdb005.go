@@ -150,6 +150,7 @@ func evaluateRenameWithoutCompatibility(g *graph.Graph, services map[ir.ServiceK
 		Counterexample: &ir.Counterexample{
 			Path:           path,
 			ViolatingState: g.State(best.stateID),
+			Outcome:        fmt.Sprintf("the query against %s fails outright, since the column no longer exists under that name", oldName),
 			RecommendedSequence: []string{
 				fmt.Sprintf("add %s as a new column alongside %s", newName, oldName),
 				"dual-write both columns in application code and backfill the new column",

@@ -260,6 +260,7 @@ func evaluateColumnExistence(
 		Counterexample: &ir.Counterexample{
 			Path:                path,
 			ViolatingState:      g.State(best.stateID),
+			Outcome:             "the live version's declared schema access no longer matches the committed schema",
 			RecommendedSequence: recommended,
 		},
 		RollbackVerdict: rollbackVerdict,

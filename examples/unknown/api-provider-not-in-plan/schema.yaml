@@ -1,0 +1,3 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: Schema
+tables: []

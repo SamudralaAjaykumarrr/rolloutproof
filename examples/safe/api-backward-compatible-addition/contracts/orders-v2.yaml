@@ -1,0 +1,22 @@
+apiVersion: rolloutproof.dev/v1beta1
+kind: ServiceContract
+
+service: orders
+version: v2
+
+api:
+  provides:
+    - contract: orders-api
+      endpoints:
+        - operation: "GET /orders/:id"
+          response:
+            fields:
+              - name: id
+                required: true
+              - name: total
+                required: true
+              # New, optional field — a backward-compatible addition
+              # (SC-SAFE-003): does not remove or newly-require anything
+              # a live consumer depends on.
+              - name: discount_code
+                required: false

@@ -169,6 +169,7 @@ func evaluateIrreversibleBeforeRollback(forward ir.RolloutPlan, forwardGraph *gr
 			Evidence:    evidence,
 			Counterexample: &ir.Counterexample{
 				ViolatingState: targetState,
+				Outcome:        "the rollback target depends on data or structure this migration has already irreversibly removed",
 				RecommendedSequence: []string{
 					"if the underlying data still exists elsewhere, restore it before completing the rollback",
 					"otherwise, treat this as a forward-only change: the rollback target cannot be safely restored against the current schema",

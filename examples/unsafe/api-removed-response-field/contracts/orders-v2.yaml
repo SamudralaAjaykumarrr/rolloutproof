@@ -1,0 +1,19 @@
+apiVersion: rolloutproof.dev/v1beta1
+kind: ServiceContract
+
+service: orders
+version: v2
+
+api:
+  provides:
+    - contract: orders-api
+      endpoints:
+        - operation: "GET /orders/:id"
+          response:
+            fields:
+              - name: id
+                required: true
+              # "total" renamed to "total_amount": checkout@v1 still
+              # requires the old field name (SC-UNSAFE-006).
+              - name: total_amount
+                required: true

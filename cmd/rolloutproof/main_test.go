@@ -34,14 +34,17 @@ func TestRun_ExitCodes(t *testing.T) {
 		{"safe widening type change", "safe/widening-type-change", exitSafe},
 		{"safe expand/contract sequenced", "safe/expand-contract-sequenced", exitSafe},
 		{"safe rollback after additive-only", "safe/rollback-after-additive-only", exitSafe},
+		{"safe api backward compatible addition", "safe/api-backward-compatible-addition", exitSafe},
 		{"unsafe drop column", "unsafe/drop-column-before-drain", exitUnsafe},
 		{"unsafe rename", "unsafe/rename-column-without-compat", exitUnsafe},
 		{"unsafe not null", "unsafe/not-null-without-default", exitUnsafe},
 		{"unsafe narrowing type change", "unsafe/narrowing-type-change", exitUnsafe},
 		{"unsafe expand/contract same rollout", "unsafe/expand-contract-same-rollout", exitUnsafe},
 		{"unsafe rollback after irreversible drop", "unsafe/rollback-after-irreversible-drop", exitUnsafe},
+		{"unsafe api removed response field", "unsafe/api-removed-response-field", exitUnsafe},
 		{"unknown missing metadata", "unknown/missing-service-metadata", exitUnknown},
 		{"unknown rollback target contract missing", "unknown/rollback-target-contract-missing", exitUnknown},
+		{"unknown api provider not in plan", "unknown/api-provider-not-in-plan", exitUnknown},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -25,9 +25,25 @@
 // implemented in rollback_plan.go, evaluated separately via
 // EvaluateRollbackPlan since they need plan.RollbackTarget and build
 // their own transition graph (graph.BuildRollback) rather than reasoning
-// over g. RP-K8S-*, RP-API-*, and RP-ORDER-* are documented but not yet
-// implemented; see the catalog's own "Notes on catalog evolution" for how
-// new invariant IDs are added without disturbing existing ones.
+// over g.
+//
+// The RP-API family (rpapi.go) is evaluated separately via EvaluateAPI
+// since it needs the api-contract registry (ir.APIContractKey ->
+// ir.APIContract, internal/parser/contract.Registry.APIContracts) rather
+// than just services:
+//
+//   - RP-API-001: a provider removes an endpoint a live consumer still
+//     calls.
+//   - RP-API-002: a provider requires a request field a live consumer
+//     doesn't send.
+//   - RP-API-003: a provider's response drops a field a live consumer
+//     requires.
+//   - RP-API-004: the aggregate of the three above across every live
+//     provider/consumer pair in a state.
+//
+// RP-K8S-* and RP-ORDER-* are documented but not yet implemented; see
+// the catalog's own "Notes on catalog evolution" for how new invariant
+// IDs are added without disturbing existing ones.
 //
 // An invariant here never inspects raw YAML/SQL: it reasons only over
 // ir.RolloutState, ir.CommittedOp, and ir.Service facts already lifted

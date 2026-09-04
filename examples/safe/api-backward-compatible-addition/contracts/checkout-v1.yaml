@@ -1,0 +1,13 @@
+apiVersion: rolloutproof.dev/v1beta1
+kind: ServiceContract
+
+service: checkout
+version: v1
+
+api:
+  consumes:
+    - contract: orders-api
+      operation: "GET /orders/:id"
+      requiredResponseFields:
+        - id
+        - total
