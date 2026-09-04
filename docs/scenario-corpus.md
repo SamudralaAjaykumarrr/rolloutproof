@@ -325,10 +325,13 @@ is committed.
 users.email while api@v1 writes users rows without asserting email is
 populated`.
 
-**Expected rollback classification.** Conditionally reversible (dropping
-the constraint is safe unless rows have since been rejected/blocked in a
-way the application already handled differently) — flagged as
-`ConditionallyReversible`, not asserted safe.
+**Expected rollback classification.** Reversible — `DROP NOT NULL` is a
+pure loosening of the constraint and always succeeds structurally,
+regardless of what data exists. (The asymmetric case is the reverse
+direction: having dropped a `NOT NULL` constraint, re-imposing it later
+is only `ConditionallyReversible`, since a `NULL` may have been written in
+the interim — see `internal/parser/sql`'s classification of
+`OpDropNotNull`.)
 
 ---
 

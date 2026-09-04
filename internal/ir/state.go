@@ -37,9 +37,17 @@ type CommittedOp struct {
 // operations committed to reach it, in commit order. An empty
 // CommittedOps means this is the plan's BaseSchema, with nothing applied
 // yet.
+//
+// Indeterminate is true when at least one committed operation could not
+// be applied (ir.OpUnclassified, docs/architecture.md §8) — Schema then
+// reflects only the last point at which it was known, and any invariant
+// evaluation against this state must treat schema-dependent facts as
+// UNKNOWN, never assume the unapplied operation was a no-op
+// (docs/vision.md §11).
 type SchemaState struct {
-	Schema       Schema
-	CommittedOps []CommittedOp
+	Schema        Schema
+	CommittedOps  []CommittedOp
+	Indeterminate bool
 }
 
 // EventKind names the mechanical event that moves a rollout from one

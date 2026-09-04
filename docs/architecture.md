@@ -405,8 +405,18 @@ enumeratively:
      is why `PhaseDuringRollout` is the dangerous default most CD pipelines
      produce (vision.md §2.6).
    - `PhaseAfterRollout`: the coexistence and old-only states are evaluated
-     against the pre-migration schema only; the post-migration schema is
-     evaluated only against the new-only end state.
+     against the pre-migration schema only. The new-only end state is
+     evaluated against **both** schema snapshots, not the post-migration
+     schema alone: the plan places the migration strictly after the
+     rollout completes, but that still leaves a real window — "rollout
+     finished, migration not yet run" — during which the fully-rolled-out
+     new version is live against the old schema. Implementation
+     (`internal/graph`) surfaces this window as its own node, distinct
+     from the eventual fully-migrated target node reached one migration-
+     commit edge later. Without it, a new version that depends on a
+     column an after-rollout migration is about to *add* would be
+     impossible to flag as UNSAFE — exactly `scenario-corpus.md`'s
+     SC-UNSAFE-004/005, which is why this refinement exists.
 4. **Multi-service ordering** (`ServiceDependency` / `Workload.DependsOn`)
    constrains which per-service state combinations are reachable at all:
    if service B declares a hard dependency on service A being at least
@@ -414,12 +424,35 @@ enumeratively:
    unreachable *only if* that dependency is declared; undeclared
    dependencies do not get this pruning and instead leave the relevant
    invariant's evaluation at UNKNOWN if it needed the ordering fact.
+   **Not yet implemented** in `internal/graph` (see its package doc): V1's
+   graph builder currently generates the full cross product of every
+   workload's progression regardless of declared dependencies. This
+   pruning is deferred, not abandoned — see the scaling note below.
 
 This is the concrete mechanism referred to in `vision.md` §4: reachable
 states are **derived from the rollout plan's own declared timing and
-strategy**, not enumerated independent of it. A plan with `N` migration
-operations, `M` workloads, and `K` cross-service dependencies produces
-`O(N × M)` candidate states before dependency pruning, not `O(2^(N+M))`.
+strategy**, not enumerated independent of it.
+
+**Actual scaling characteristic (superseding this section's original
+estimate).** Implementing `internal/graph` showed the `O(N × M)` figure
+above understated the true state count: independent workloads and
+independent in-flight (`PhaseDuringRollout`) migrations can interleave in
+*any* order absent a declared dependency forcing otherwise, and modeling
+fewer than all interleavings would silently drop reachable states — the
+opposite of this project's safety direction (docs/adr/0003). The actual
+construction is `O(3^W × 2^D)`: a cartesian product of each of `W`
+concurrently-changing workloads' own 3-step progression (old-only,
+coexistence-or-transient-empty, new-only), crossed with all `2^D`
+commit/pending combinations of `D` `PhaseDuringRollout` migrations in the
+same plan (`PhaseBeforeRollout` migrations are folded into the starting
+schema; `PhaseAfterRollout` migrations are unambiguous by construction and
+appended as a linear chain, not a cross product — see point 3 above). This
+is still exponentially smaller than the `O(2^(N+M))` full-enumeration
+alternative ADR 0003 rejects, and is accepted for V1 because realistic
+plans change a small number of workloads and carry very few in-flight
+migrations at once; item 4's dependency-based pruning is the intended
+mitigation for larger plans and remains future work, tracked in
+`internal/graph`'s package doc rather than implemented here.
 
 ### 3.3 Explicit reachability assumptions
 
