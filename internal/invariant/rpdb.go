@@ -137,9 +137,16 @@ func evaluateDestructiveColumnRemoval(
 	path := g.ShortestPath(best.stateID)
 	target := best.op.Op.TargetColumn()
 
-	summary := fmt.Sprintf(
-		"migration %q drops %s while %s@%s still %s it, and the two may coexist during the rollout",
-		best.op.MigrationID, target, best.svcVersion.ServiceName, best.svcVersion.Version, factLabel)
+	var summary string
+	if len(best.liveInState) > 1 {
+		summary = fmt.Sprintf(
+			"migration %q drops %s while %s@%s still %s it, and the two may coexist during the rollout",
+			best.op.MigrationID, target, best.svcVersion.ServiceName, best.svcVersion.Version, factLabel)
+	} else {
+		summary = fmt.Sprintf(
+			"migration %q drops %s while %s@%s still %s it, and the migration's declared phase does not rule out committing before %s@%s is replaced",
+			best.op.MigrationID, target, best.svcVersion.ServiceName, best.svcVersion.Version, factLabel, best.svcVersion.ServiceName, best.svcVersion.Version)
+	}
 
 	evidence := []ir.Evidence{
 		{
@@ -156,7 +163,7 @@ func evaluateDestructiveColumnRemoval(
 		},
 		{
 			Kind:        ir.EvidenceRolloutStrategy,
-			Description: fmt.Sprintf("rollout strategy permits the live version set %s during this rollout", describeLiveSet(best.liveInState)),
+			Description: describeReachability(best.liveInState),
 		},
 	}
 
@@ -187,6 +194,20 @@ func describeLiveSet(live []ir.LiveVersion) string {
 		parts[i] = fmt.Sprintf("%s@%s", lv.ServiceName, lv.Version)
 	}
 	return "{" + strings.Join(parts, ", ") + "}"
+}
+
+// describeReachability names the specific mechanism that makes this
+// violating state reachable: coexistence (more than one version live at
+// once) if that's what the state shows, or migration-timing ambiguity
+// (docs/architecture.md §3.3, assumption A2) when only one version is
+// live — the two are distinct hazards and citing the wrong one would
+// misdirect a reader toward the wrong remediation (e.g. "reduce
+// maxSurge" fixes coexistence but does nothing about timing ambiguity).
+func describeReachability(live []ir.LiveVersion) string {
+	if len(live) > 1 {
+		return fmt.Sprintf("rollout strategy permits the live version set %s to coexist during this rollout", describeLiveSet(live))
+	}
+	return fmt.Sprintf("the migration's declared phase does not order its commit relative to %s becoming live, so this state is reachable even without version coexistence", describeLiveSet(live))
 }
 
 // selectShortest picks the violation whose state is reachable by the

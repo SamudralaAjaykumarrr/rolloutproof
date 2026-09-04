@@ -1,0 +1,10 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: Schema
+tables:
+  - name: users
+    columns:
+      - name: id
+        type: integer
+      - name: referral_code
+        type: text
+        nullable: true

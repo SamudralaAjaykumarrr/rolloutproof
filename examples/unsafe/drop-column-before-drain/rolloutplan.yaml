@@ -1,0 +1,10 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+
+workload: api
+fromVersion: v1
+toVersion: v2
+
+migrations:
+  - file: migrations/017_drop_email.sql
+    phase: during

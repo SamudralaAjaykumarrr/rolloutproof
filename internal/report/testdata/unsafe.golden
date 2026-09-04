@@ -5,12 +5,12 @@ ROLLOUT: UNSAFE
 ------------------------------------------------------------
 RP-DB-001  UNSAFE
 
-migration "017_drop_email.sql" drops users.email while api@v1 still reads it, and the two may coexist during the rollout
+migration "017_drop_email.sql" drops users.email while api@v1 still reads it, and the migration's declared phase does not rule out committing before api@v1 is replaced
 
 Evidence:
 - 017_drop_email.sql: migration drops users.email
 - contracts/api-v1.yaml: api@v1 declares it reads users.email
-- rollout strategy permits the live version set {api@v1} during this rollout
+- the migration's declared phase does not order its commit relative to {api@v1} becoming live, so this state is reachable even without version coexistence
 
 Counterexample:
 1. migration "017_drop_email.sql" commits
