@@ -1,0 +1,21 @@
+ROLLOUT: UNKNOWN
+
+2 invariant(s) evaluated: 0 safe, 0 unsafe, 2 unknown
+
+------------------------------------------------------------
+RP-DB-001  UNKNOWN
+
+RP-DB-001: insufficient evidence to evaluate every reachable state
+
+Missing evidence:
+- Service api@v1: no contract metadata file found for this service version
+- Service api@v2: no contract metadata file found for this service version
+
+------------------------------------------------------------
+RP-DB-002  UNKNOWN
+
+RP-DB-002: insufficient evidence to evaluate every reachable state
+
+Missing evidence:
+- Service api@v1: no contract metadata file found for this service version
+- Service api@v2: no contract metadata file found for this service version
