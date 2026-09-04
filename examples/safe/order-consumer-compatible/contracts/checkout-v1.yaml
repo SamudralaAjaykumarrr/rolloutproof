@@ -1,0 +1,11 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: ServiceContract
+
+service: checkout
+version: v1
+
+dependencies:
+  # checkout@v1 only needs payments@v2 semantics — already satisfied by
+  # every reachable payments version in this rollout (v2 through v4).
+  - service: payments
+    minCompatibleVersion: v2

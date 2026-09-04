@@ -1,0 +1,9 @@
+apiVersion: rolloutproof.dev/v1alpha1
+kind: RolloutPlan
+
+workload: payments
+fromVersion: v2
+toVersion: v4
+
+staticWorkloads:
+  - checkout

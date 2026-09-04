@@ -41,9 +41,21 @@
 //   - RP-API-004: the aggregate of the three above across every live
 //     provider/consumer pair in a state.
 //
-// RP-K8S-* and RP-ORDER-* are documented but not yet implemented; see
-// the catalog's own "Notes on catalog evolution" for how new invariant
-// IDs are added without disturbing existing ones.
+// The RP-ORDER family (rporder.go) is evaluated via EvaluateOrder:
+//
+//   - RP-ORDER-001 / RP-ORDER-002: a live consumer's declared
+//     ServiceDependency.MinCompatibleVersion for a provider is not
+//     satisfied by whatever provider version is live in the same
+//     reachable state. docs/invariants.md describes RP-ORDER-002 as
+//     exactly RP-ORDER-001 evaluated from the other direction, so both
+//     IDs report the same underlying scan (rpordertypes.go's
+//     compareVersions is V1's self-contained version-ordering fallback,
+//     since no internal/config package exists yet to declare
+//     docs/architecture.md §2.1.1's project-wide version scheme).
+//
+// RP-K8S-* is documented but not yet implemented; see the catalog's own
+// "Notes on catalog evolution" for how new invariant IDs are added
+// without disturbing existing ones.
 //
 // An invariant here never inspects raw YAML/SQL: it reasons only over
 // ir.RolloutState, ir.CommittedOp, and ir.Service facts already lifted

@@ -43,6 +43,7 @@ func Run(dir string) ([]ir.Diagnostic, error) {
 	diags := invariant.Evaluate(plan, g, services)
 	diags = append(diags, invariant.EvaluateRollbackPlan(plan, g, services)...)
 	diags = append(diags, invariant.EvaluateAPI(g, services, contracts)...)
+	diags = append(diags, invariant.EvaluateOrder(g, services)...)
 	return diags, nil
 }
 

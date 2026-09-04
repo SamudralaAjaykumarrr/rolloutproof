@@ -246,6 +246,34 @@ func TestRun_UnknownAPIProviderContractMissing(t *testing.T) {
 	}
 }
 
+// --- ordering: safe + unsafe ---
+
+func TestRun_SafeOrderConsumerCompatible(t *testing.T) {
+	diags, err := Run(exampleDir(t, "safe/order-consumer-compatible"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictSafe {
+		t.Fatalf("expected SAFE, got %v (%+v)", got, diags)
+	}
+}
+
+// SC-UNSAFE-011: checkout@v1 requires payments >= v3, but payments' own
+// live versions during this rollout include v2 (the starting point).
+func TestRun_UnsafeOrderConsumerBehindProvider(t *testing.T) {
+	diags, err := Run(exampleDir(t, "unsafe/order-consumer-behind-provider"))
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if got := invariant.Aggregate(diags); got != ir.VerdictUnsafe {
+		t.Fatalf("expected UNSAFE, got %v (%+v)", got, diags)
+	}
+	d := diagFor(diags, invariant.RPORDER001)
+	if d == nil || d.Verdict != ir.VerdictUnsafe {
+		t.Fatalf("expected RP-ORDER-001 UNSAFE, got %+v", d)
+	}
+}
+
 // --- rollback: safe + unsafe + unknown ---
 
 func TestRun_SafeRollbackAfterAdditiveOnly(t *testing.T) {

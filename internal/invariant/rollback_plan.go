@@ -78,9 +78,8 @@ func EvaluateRollbackPlan(forward ir.RolloutPlan, forwardGraph *graph.Graph, ser
 		}
 	}
 
-	irreversible := evaluateIrreversibleBeforeRollback(forward, forwardGraph, services)
-	rollback001 := irreversible
-	rollback001.InvariantID = RPROLLBACK001
+	irreversible := evaluateIrreversibleBeforeRollback(RPDB007, forward, forwardGraph, services)
+	rollback001 := evaluateIrreversibleBeforeRollback(RPROLLBACK001, forward, forwardGraph, services)
 
 	rollback002 := evaluateOldVersionAgainstCurrentSchema(forward, forwardGraph, services)
 
@@ -94,15 +93,20 @@ func EvaluateRollbackPlan(forward ir.RolloutPlan, forwardGraph *graph.Graph, ser
 // (V1 scoping: the forward graph's Target node — see this file's package
 // doc) may be Irreversible, or ConditionallyReversible with data written
 // under the new structure, while the rollback target's declared schema
-// access depends on what that migration changed.
-func evaluateIrreversibleBeforeRollback(forward ir.RolloutPlan, forwardGraph *graph.Graph, services map[ir.ServiceKey]ir.Service) ir.Diagnostic {
+// access depends on what that migration changed. Called once per ID
+// (RPDB007, RPROLLBACK001) — same mechanism, docs/invariants.md's
+// documented "shared code path, distinct ID for reporting" pattern
+// (RP-DB-005 already uses it for RP-DB-001/002) — so each Diagnostic's
+// own Summary names the ID it was actually reported under, not a
+// hardcoded one.
+func evaluateIrreversibleBeforeRollback(id string, forward ir.RolloutPlan, forwardGraph *graph.Graph, services map[ir.ServiceKey]ir.Service) ir.Diagnostic {
 	rollbackKey := ir.ServiceKey{Name: forward.RollbackTarget.Workload.ServiceName, Version: forward.RollbackTarget.ToVersion}
 	rollbackSvc, ok := services[rollbackKey]
 	if !ok {
 		return ir.Diagnostic{
-			InvariantID: RPDB007,
+			InvariantID: id,
 			Verdict:     ir.VerdictUnknown,
-			Summary:     fmt.Sprintf("%s: insufficient evidence to evaluate the rollback target's schema dependencies", RPDB007),
+			Summary:     fmt.Sprintf("%s: insufficient evidence to evaluate the rollback target's schema dependencies", id),
 			MissingEvidence: []ir.EvidenceGap{{
 				Field:  fmt.Sprintf("Service %s@%s", rollbackKey.Name, rollbackKey.Version),
 				Reason: "no contract metadata file found for the rollback target version",
@@ -163,9 +167,9 @@ func evaluateIrreversibleBeforeRollback(forward ir.RolloutPlan, forwardGraph *gr
 
 	if verdict == ir.VerdictUnsafe {
 		return ir.Diagnostic{
-			InvariantID: RPDB007,
+			InvariantID: id,
 			Verdict:     ir.VerdictUnsafe,
-			Summary:     fmt.Sprintf("%s: an irreversible (or data-losing) migration committed before the rollback point, which the rollback target depends on", RPDB007),
+			Summary:     fmt.Sprintf("%s: an irreversible (or data-losing) migration committed before the rollback point, which the rollback target depends on", id),
 			Evidence:    evidence,
 			Counterexample: &ir.Counterexample{
 				ViolatingState: targetState,
@@ -179,16 +183,16 @@ func evaluateIrreversibleBeforeRollback(forward ir.RolloutPlan, forwardGraph *gr
 	}
 	if gaps.len() > 0 {
 		return ir.Diagnostic{
-			InvariantID:     RPDB007,
+			InvariantID:     id,
 			Verdict:         ir.VerdictUnknown,
-			Summary:         fmt.Sprintf("%s: insufficient evidence to evaluate every migration committed before the rollback point", RPDB007),
+			Summary:         fmt.Sprintf("%s: insufficient evidence to evaluate every migration committed before the rollback point", id),
 			MissingEvidence: gaps.list(),
 		}
 	}
 	return ir.Diagnostic{
-		InvariantID: RPDB007,
+		InvariantID: id,
 		Verdict:     ir.VerdictSafe,
-		Summary:     fmt.Sprintf("%s: no migration committed before the rollback point is irreversible in a way the rollback target depends on", RPDB007),
+		Summary:     fmt.Sprintf("%s: no migration committed before the rollback point is irreversible in a way the rollback target depends on", id),
 	}
 }
 
