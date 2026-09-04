@@ -1,0 +1,141 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Full gate before release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: |
+          out="$(gofmt -l .)"
+          if [ -n "$out" ]; then
+            echo "$out"
+            exit 1
+          fi
+      - run: go vet ./...
+      - run: go build ./...
+      - run: go test ./...
+      - run: go test -race ./...
+      - run: go run ./cmd/eval
+
+  build:
+    name: Build release binaries
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          COMMIT="$(git rev-parse --short HEAD)"
+          DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          LDFLAGS="-X github.com/SamudralaAjaykumarrr/rolloutproof/internal/version.Version=${VERSION}"
+          LDFLAGS="${LDFLAGS} -X github.com/SamudralaAjaykumarrr/rolloutproof/internal/version.Commit=${COMMIT}"
+          LDFLAGS="${LDFLAGS} -X github.com/SamudralaAjaykumarrr/rolloutproof/internal/version.Date=${DATE}"
+
+          OUT="rolloutproof"
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            OUT="rolloutproof.exe"
+          fi
+
+          mkdir -p dist
+          go build -trimpath -ldflags "${LDFLAGS}" -o "dist/${OUT}" ./cmd/rolloutproof
+
+          ARCHIVE="rolloutproof_${VERSION}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          cd dist
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            zip "../${ARCHIVE}.zip" "${OUT}"
+          else
+            tar czf "../${ARCHIVE}.tar.gz" "${OUT}"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rolloutproof_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: |
+            rolloutproof_*.tar.gz
+            rolloutproof_*.zip
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Checksums
+        run: |
+          cd artifacts
+          sha256sum rolloutproof_* > SHA256SUMS
+
+      - name: Extract this version's changelog section
+        id: changelog
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Pull the section between this version's heading and the next
+          # "## [" heading in CHANGELOG.md, falling back to a generic
+          # note if the entry hasn't been added yet (docs/RELEASING.md
+          # asks for it to be added before tagging, but this must not
+          # hard-fail an otherwise-valid release).
+          notes="$(awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md)"
+          if [ -z "$notes" ]; then
+            notes="See CHANGELOG.md for details."
+          fi
+          {
+            echo "notes<<RELEASE_NOTES_EOF"
+            echo "$notes"
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/rolloutproof_*.tar.gz
+            artifacts/rolloutproof_*.zip
+            artifacts/SHA256SUMS
+          body: ${{ steps.changelog.outputs.notes }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
