@@ -304,14 +304,14 @@ extends.
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: SamudralaAjaykumarrr/rolloutproof@main
+- uses: SamudralaAjaykumarrr/rolloutproof@v0.1.0
   with:
     directory: deploy/checkout-rollout
 ```
 
-No tagged release exists yet (`docs/RELEASING.md`), so `@main` is the
-only ref that currently resolves; pin to a `@vX.Y.Z` tag instead once one
-is cut. Exits 0/1/2 exactly like the CLI; see `docs/CI.md` for the full
+Pin to a tagged release (`docs/RELEASING.md`) rather than `@main`, so a
+change on `main` can't silently alter what your CI gate runs. Exits
+0/1/2 exactly like the CLI; see `docs/CI.md` for the full
 reusable Action (inputs/outputs, `fail-on-unknown`), the generic
 exit-code contract any other CI system can use directly, and this
 repository's own self-testing workflow (`.github/workflows/ci.yml`).
