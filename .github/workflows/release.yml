@@ -110,7 +110,12 @@ jobs:
       - name: Extract this version's changelog section
         id: changelog
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          # docs/RELEASING.md's own convention (and the build job above)
+          # keeps the "v" prefix in both the tag and the CHANGELOG.md
+          # heading ("## [vX.Y.Z]") — do not strip it here, or this
+          # never matches and every release silently falls back to the
+          # generic note below.
+          VERSION="${GITHUB_REF_NAME}"
           # Pull the section between this version's heading and the next
           # "## [" heading in CHANGELOG.md, falling back to a generic
           # note if the entry hasn't been added yet (docs/RELEASING.md

@@ -9,6 +9,8 @@ instead of a version number.
 
 ## [Unreleased]
 
+## [v0.1.0] - 2026-09-04
+
 ### Added — cross-layer verification engine
 
 - **RP-DB family (complete, RP-DB-001 through RP-DB-007)**: destructive
