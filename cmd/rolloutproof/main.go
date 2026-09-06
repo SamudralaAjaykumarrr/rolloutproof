@@ -41,9 +41,15 @@
 // These exit codes hold regardless of --format: a CI step can select
 // json/sarif purely for the artifact and still branch on $? exactly as
 // it would with the default text output (docs/CI.md).
+//
+// --help (or -h) at the top level or on the verify subcommand prints
+// this usage text and exits 0; it is not part of the verify exit-code
+// contract above, which only governs a completed or attempted
+// verification run.
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -79,6 +85,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return exitToolFailure
 	}
 	switch args[0] {
+	case "--help", "-help", "-h", "help":
+		fmt.Fprintln(stdout, usage)
+		return exitSafe
 	case "version":
 		fmt.Fprintln(stdout, version.String())
 		return exitSafe
@@ -92,11 +101,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 func runVerify(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("verify", flag.ContinueOnError)
-	fs.SetOutput(stderr)
+	fs.SetOutput(io.Discard)
 	format := fs.String("format", "text", "output format: text, json, or sarif")
 	output := fs.String("output", "", "write output to this file instead of stdout")
-	fs.Usage = func() { fmt.Fprintln(stderr, usage) }
 	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			fmt.Fprintln(stdout, usage)
+			return exitSafe
+		}
+		fmt.Fprintln(stderr, usage)
 		return exitToolFailure
 	}
 	if fs.NArg() != 1 {

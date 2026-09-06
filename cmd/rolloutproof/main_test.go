@@ -151,6 +151,42 @@ func TestRun_OutputFlagWritesFile(t *testing.T) {
 	}
 }
 
+func TestRun_TopLevelHelp(t *testing.T) {
+	for _, arg := range []string{"--help", "-h", "-help", "help"} {
+		t.Run(arg, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			got := run([]string{arg}, &stdout, &stderr)
+			if got != exitSafe {
+				t.Fatalf("exit code = %d, want %d", got, exitSafe)
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("expected no stderr output, got: %s", stderr.String())
+			}
+			if !strings.Contains(stdout.String(), "rolloutproof verify") {
+				t.Fatalf("expected usage text on stdout, got: %s", stdout.String())
+			}
+		})
+	}
+}
+
+func TestRun_VerifyHelp(t *testing.T) {
+	for _, arg := range []string{"--help", "-h"} {
+		t.Run(arg, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			got := run([]string{"verify", arg}, &stdout, &stderr)
+			if got != exitSafe {
+				t.Fatalf("exit code = %d, want %d", got, exitSafe)
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("expected no stderr output, got: %s", stderr.String())
+			}
+			if !strings.Contains(stdout.String(), "rolloutproof verify") {
+				t.Fatalf("expected usage text on stdout, got: %s", stdout.String())
+			}
+		})
+	}
+}
+
 func TestRun_UsageOnBadArgs(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	got := run(nil, &stdout, &stderr)
